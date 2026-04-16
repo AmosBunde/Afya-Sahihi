@@ -65,6 +65,12 @@ log.
 3. **Major bumps individually.** Each one gets a full review. Link the
    upstream changelog and the ADR that originally justified the dependency.
 
+> **Convention note**: the `NO-ADR-NEEDED: ...` marker above is a human
+> triage convention only. No hook or action parses it — it exists so a
+> reviewer reading the PR body can see at a glance that the author
+> considered and dismissed the ADR question. Do not build tooling that
+> depends on the exact string.
+
 ### Expected labels on every Dependabot PR
 
 The `actions/labeler@v5` in `pr-automation.yml` applies labels by changed
