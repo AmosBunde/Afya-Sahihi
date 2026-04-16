@@ -28,16 +28,15 @@ set +e
 set -e
 assert_rc 0 "$rc" && pass
 
-# Red: asyncpg call without statement_timeout.
+# Red: asyncpg call without statement_timeout. Message must name the exact
+# missing phrase so a contributor can grep-fix without reading the skill.
 case_start "red: asyncpg call without SET LOCAL statement_timeout is rejected"
 cat > "$D/bad.py" <<'PY'
 async def q(pool):
     async with pool.acquire() as conn:
         return await conn.fetch("SELECT 1")
 PY
-set +e
-"$HOOK" "$D/bad.py" >/dev/null 2>&1; rc=$?
-set -e
-assert_rc 1 "$rc" && pass
+run_hook_capture "$HOOK" "$D/bad.py"
+assert_rc 1 "$CAPTURED_RC" && assert_stderr_contains "SET LOCAL statement_timeout" && pass
 
 finish

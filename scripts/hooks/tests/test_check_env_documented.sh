@@ -28,13 +28,11 @@ set +e
 set -e
 assert_rc 0 "$rc" && pass
 
-case_start "red: settings field missing from env/ is rejected"
+case_start "red: settings field missing from env/ is rejected and names the field"
 cat > "$D/env/app.env" <<'ENV'
 SERVICE_NAME=afya
 ENV
-set +e
-( cd "$D" && "$HOOK" >/dev/null 2>&1 ); rc=$?
-set -e
-assert_rc 1 "$rc" && pass
+run_hook_capture bash -c "cd '$D' && '$HOOK'"
+assert_rc 1 "$CAPTURED_RC" && assert_stderr_contains "PG_HOST" && pass
 
 finish

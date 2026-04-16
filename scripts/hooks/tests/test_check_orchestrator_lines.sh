@@ -25,11 +25,9 @@ set +e
 set -e
 assert_rc 0 "$rc" && pass
 
-case_start "red: 401-line orchestrator.py is rejected"
+case_start "red: 401-line orchestrator.py is rejected and names ADR-0003"
 python3 -c "print('x = 1\n' * 401, end='')" > "$D/backend/app/orchestrator.py"
-set +e
-( cd "$D" && "$HOOK" >/dev/null 2>&1 ); rc=$?
-set -e
-assert_rc 1 "$rc" && pass
+run_hook_capture bash -c "cd '$D' && '$HOOK'"
+assert_rc 1 "$CAPTURED_RC" && assert_stderr_contains "ADR-0003" && pass
 
 finish

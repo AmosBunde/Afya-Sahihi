@@ -31,9 +31,7 @@ cat > "$D/fake_bin/uv" <<'STUB'
 exit 1
 STUB
 chmod +x "$D/fake_bin/uv"
-set +e
-( cd "$D" && PATH="$D/fake_bin:$PATH" "$HOOK" >/dev/null 2>&1 ); rc=$?
-set -e
-assert_rc 1 "$rc" && pass
+run_hook_capture bash -c "cd '$D' && PATH='$D/fake_bin:$PATH' '$HOOK'"
+assert_rc 1 "$CAPTURED_RC" && assert_stderr_contains "Tier 1 evals failed" && pass
 
 finish

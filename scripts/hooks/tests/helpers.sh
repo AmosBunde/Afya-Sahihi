@@ -64,6 +64,39 @@ assert_rc() {
   return 0
 }
 
+# run_hook_capture HOOK_PATH [ARGS...]: run a hook in a subshell, capture
+# stderr into $CAPTURED_STDERR and exit code into $CAPTURED_RC. Used to
+# assert that red-path failures print an actionable pointer, not just
+# exit nonzero.
+#
+# Usage:
+#   run_hook_capture "$HOOK" "$D/bad.py"
+#   assert_rc 1 "$CAPTURED_RC"
+#   assert_stderr_contains "SET LOCAL statement_timeout"
+run_hook_capture() {
+  local err_file
+  err_file="$(mktemp)"
+  set +e
+  "$@" >/dev/null 2>"$err_file"
+  # shellcheck disable=SC2034  # CAPTURED_RC is consumed by sourcing test files
+  CAPTURED_RC=$?
+  set -e
+  # shellcheck disable=SC2034  # CAPTURED_STDERR is consumed by sourcing test files
+  CAPTURED_STDERR="$(cat "$err_file")"
+  rm -f "$err_file"
+}
+
+# assert_stderr_contains SUBSTRING: verify the captured stderr from the
+# most recent run_hook_capture includes SUBSTRING literally.
+assert_stderr_contains() {
+  local needle="$1"
+  if [[ "$CAPTURED_STDERR" != *"$needle"* ]]; then
+    fail "stderr did not contain expected pointer: $needle"
+    return 1
+  fi
+  return 0
+}
+
 # finish: called at end of each test file to set the process exit code.
 finish() {
   if [ "$FAILED" -ne 0 ]; then
