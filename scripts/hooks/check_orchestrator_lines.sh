@@ -1,5 +1,16 @@
 #!/usr/bin/env bash
-# ADR-0003: orchestrator.py must stay under 400 lines.
+# check_orchestrator_lines.sh
+#
+# Purpose: cap `backend/app/orchestrator.py` at 400 lines. ADR-0003 mandates
+#   the orchestrator stays readable top-to-bottom; past 400 lines it starts
+#   hiding control flow. When the cap is hit, extract a helper module
+#   instead of raising it.
+#
+# Inputs:   reads backend/app/orchestrator.py; takes no arguments.
+# Exit 0:   file missing (pre-backend repo state), or <= 400 lines.
+# Exit 1:   > 400 lines. Error names the current line count and the cap,
+#           with a pointer to ADR-0003.
+# Escape:   do NOT `--no-verify`; write a new ADR that supersedes 0003.
 set -euo pipefail
 f="backend/app/orchestrator.py"
 [[ -f "$f" ]] || exit 0

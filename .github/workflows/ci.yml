@@ -33,6 +33,8 @@ jobs:
         run: pip install -r tools/requirements-dev.txt
       - name: Run pre-commit on all files
         run: pre-commit run --all-files --show-diff-on-failure
+      - name: Run custom hook unit tests
+        run: bash scripts/hooks/tests/run_all.sh
 
   secrets:
     name: Gitleaks secret scan
