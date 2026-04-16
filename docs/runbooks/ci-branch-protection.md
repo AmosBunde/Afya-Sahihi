@@ -18,6 +18,7 @@ The checks that must be green before merge to `main`:
 
 | Check name (from the workflow) | Gate reason |
 |---|---|
+| `Preflight — detect repo layout` | detects which sub-components exist; downstream jobs key off its outputs |
 | `Hygiene & hooks` | pre-commit + custom hook unit tests |
 | `Gitleaks secret scan` | catches committed secrets |
 | `SAST (Semgrep + Bandit + CodeQL)` | static analysis |
@@ -38,6 +39,7 @@ gh api \
   -H "Accept: application/vnd.github+json" \
   repos/AmosBunde/Afya-Sahihi/branches/main/protection \
   -f 'required_status_checks[strict]=true' \
+  -f 'required_status_checks[contexts][]=Preflight — detect repo layout' \
   -f 'required_status_checks[contexts][]=Hygiene & hooks' \
   -f 'required_status_checks[contexts][]=Gitleaks secret scan' \
   -f 'required_status_checks[contexts][]=SAST (Semgrep + Bandit + CodeQL)' \
@@ -56,7 +58,7 @@ gh api \
   -f 'required_linear_history=true'
 ```
 
-A job that self-skips via `hashFiles(...) != ''` is reported by GitHub as
+A job that self-skips via a preflight-output `if:` is reported by GitHub as
 status `neutral`, which branch protection treats as success. This is why
 the checks above can all be marked required today even though most of them
 are no-ops until the relevant issue lands.
