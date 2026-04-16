@@ -107,18 +107,29 @@ jobs:
         with:
           sarif_file: bandit.sarif
           category: bandit
-      # CodeQL needs at least one Python or JS source file to finalize its
-      # database; pre-backend/pre-frontend repos error at the `finalize` step
-      # with "detected code written in GitHub Actions, but not any written
-      # in Python." Gate on the preflight outputs so CodeQL only runs once
-      # there is source for it to analyze.
-      - name: CodeQL init
+      # CodeQL needs at least one source file per listed language. Pass
+      # each language only when its source tree actually exists — otherwise
+      # finalize exits 32 with "no source code seen." Build the list
+      # dynamically from the preflight outputs.
+      - name: Determine CodeQL languages
+        id: codeql_langs
         if: needs.preflight.outputs.has_backend == 'true' || needs.preflight.outputs.has_frontend == 'true'
+        run: |
+          langs=""
+          if [ "${{ needs.preflight.outputs.has_backend }}" = "true" ]; then
+            langs="python"
+          fi
+          if [ "${{ needs.preflight.outputs.has_frontend }}" = "true" ]; then
+            langs="${langs:+$langs, }javascript"
+          fi
+          echo "langs=$langs" >> "$GITHUB_OUTPUT"
+      - name: CodeQL init
+        if: steps.codeql_langs.outputs.langs != ''
         uses: github/codeql-action/init@v3
         with:
-          languages: python, javascript
+          languages: ${{ steps.codeql_langs.outputs.langs }}
       - name: CodeQL analyze
-        if: needs.preflight.outputs.has_backend == 'true' || needs.preflight.outputs.has_frontend == 'true'
+        if: steps.codeql_langs.outputs.langs != ''
         uses: github/codeql-action/analyze@v3
 
   deps:
@@ -139,7 +150,9 @@ jobs:
           if [ -f backend/requirements.txt ]; then
             pip-audit --strict -r backend/requirements.txt
           else
-            pip-audit --strict --pyproject backend/pyproject.toml
+            # pip-audit auto-detects pyproject.toml when given a project path;
+            # there is no --pyproject flag (pip-audit 2.10).
+            pip-audit --strict backend
           fi
       - name: npm audit
         if: hashFiles('frontend/package-lock.json') != ''

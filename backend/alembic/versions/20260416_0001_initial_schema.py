@@ -41,10 +41,22 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS pg_search;
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
--- pg_cron requires shared_preload_libraries='pg_cron' at server start.
--- The CREATE EXTENSION succeeds regardless; job rows added later only
--- execute when the server is correctly configured.
-CREATE EXTENSION IF NOT EXISTS pg_cron;
+-- pg_cron requires shared_preload_libraries='pg_cron' at server start
+-- AND cron.database_name = <current_db>. In environments where pg_cron
+-- is preloaded against a different database (e.g. ParadeDB's default
+-- image), CREATE EXTENSION raises on the DB mismatch. We fail open
+-- here because pg_cron is for scheduled maintenance, not core schema
+-- correctness. Production config lands in issue #14.
+DO $$
+BEGIN
+    CREATE EXTENSION IF NOT EXISTS pg_cron;
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'pg_cron extension could not be loaded (%); continuing.'
+        ' Maintenance jobs will not run until the cluster is configured'
+        ' with shared_preload_libraries=pg_cron and cron.database_name='
+        '<current_db>.', SQLERRM;
+END
+$$;
 """
 
 # Least-privilege application role. Owns no objects; has only SELECT +
