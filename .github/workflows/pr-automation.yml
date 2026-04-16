@@ -98,4 +98,8 @@ jobs:
               issue_number: context.payload.pull_request.number,
               body,
             });
-        if: github.event.action == 'opened'
+        # Fire on first open for normal PRs, and also when a draft is
+        # marked ready-for-review (the `opened` event does not re-fire on
+        # that transition). Edits and synchronizes stay quiet so the PR
+        # author is not spammed on every push.
+        if: github.event.action == 'opened' || github.event.action == 'ready_for_review'

@@ -27,6 +27,10 @@ The checks that must be green before merge to `main`:
 | `Tier 1 evals (Inspect AI)` | golden-set regression (self-skips pre-M6) |
 | `Frontend lint + typecheck + tests` | self-skips until #35 lands |
 | `Validate k3s manifests` | kubeconform + kyverno |
+| `Auto-label by paths` | labels PRs by file path for CODEOWNERS routing |
+| `PR size check` | fails the PR when >1000 lines changed (enforces the size cap) |
+| `PR checklist filled out` | PR body must tick the reviewer checklist |
+| `Lint PR title (conventional)` | enforces Conventional Commit title format |
 
 `Container build + vulnerability scan` is intentionally omitted — it only
 runs on `push` after merge, so it cannot be a merge gate.
@@ -48,6 +52,10 @@ gh api \
   -f 'required_status_checks[contexts][]=Tier 1 evals (Inspect AI)' \
   -f 'required_status_checks[contexts][]=Frontend lint + typecheck + tests' \
   -f 'required_status_checks[contexts][]=Validate k3s manifests' \
+  -f 'required_status_checks[contexts][]=Auto-label by paths' \
+  -f 'required_status_checks[contexts][]=PR size check' \
+  -f 'required_status_checks[contexts][]=PR checklist filled out' \
+  -f 'required_status_checks[contexts][]=Lint PR title (conventional)' \
   -f 'enforce_admins=true' \
   -f 'required_pull_request_reviews[required_approving_review_count]=1' \
   -f 'required_pull_request_reviews[dismiss_stale_reviews]=true' \
