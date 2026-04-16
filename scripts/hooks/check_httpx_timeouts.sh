@@ -1,5 +1,19 @@
 #!/usr/bin/env bash
-# Every httpx.AsyncClient instantiation must set timeout= explicitly.
+# check_httpx_timeouts.sh
+#
+# Purpose: every `httpx.AsyncClient(...)` (or bare `AsyncClient(...)` when
+#   imported from httpx) constructor call must pass `timeout=` explicitly.
+#   A request-path client without a timeout hangs the request forever when
+#   the upstream stalls, violating the "every external call has a timeout"
+#   non-negotiable in SKILL.md §0 and the pattern in §5.
+#
+# Inputs:   file paths passed as arguments by pre-commit (one per changed file).
+# Exit 0:   no AsyncClient constructor call without timeout= is found.
+# Exit 1:   at least one AsyncClient(...) without timeout= found; file:line
+#           printed on stdout (the Python block inside does `print`, not
+#           stderr — acceptable for a linter because pre-commit surfaces it).
+# Example:  `httpx.AsyncClient(base_url="...")` fails; adding
+#           `timeout=httpx.Timeout(10)` fixes it.
 set -euo pipefail
 RC=0
 for f in "$@"; do
