@@ -17,6 +17,32 @@ permissions:
   security-events: write
 
 jobs:
+  # Preflight detects which repo layout artefacts exist in this ref. The
+  # rest of the workflow uses its outputs to skip cleanly when a component
+  # has not landed yet (backend/pyproject.toml, frontend/package-lock.json,
+  # eval/tier1/golden_set.py, per-service Dockerfiles). job-level `if:`
+  # cannot call hashFiles() directly — GitHub only exposes that function
+  # in step-level expressions — hence this detection job.
+  preflight:
+    name: Preflight — detect repo layout
+    runs-on: ubuntu-latest
+    outputs:
+      has_backend: ${{ steps.detect.outputs.has_backend }}
+      has_frontend: ${{ steps.detect.outputs.has_frontend }}
+      has_eval: ${{ steps.detect.outputs.has_eval }}
+      has_backend_dockerfile: ${{ steps.detect.outputs.has_backend_dockerfile }}
+      has_frontend_dockerfile: ${{ steps.detect.outputs.has_frontend_dockerfile }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: detect
+        run: |
+          emit() { echo "$1=$2" >> "$GITHUB_OUTPUT"; }
+          emit has_backend              "$([ -f backend/pyproject.toml ]       && echo true || echo false)"
+          emit has_frontend             "$([ -f frontend/package-lock.json ]   && echo true || echo false)"
+          emit has_eval                 "$([ -f eval/tier1/golden_set.py ]     && echo true || echo false)"
+          emit has_backend_dockerfile   "$([ -f backend/Dockerfile ]           && echo true || echo false)"
+          emit has_frontend_dockerfile  "$([ -f frontend/Dockerfile ]          && echo true || echo false)"
+
   hygiene:
     name: Hygiene & hooks
     runs-on: ubuntu-latest
@@ -117,11 +143,11 @@ jobs:
   backend-tests:
     name: Backend unit + integration
     runs-on: ubuntu-latest
-    # Whole job is a no-op until the backend scaffold lands. Until then it
-    # would fail on `uv sync` and give every PR a red check. The `if` here
-    # is on the job, not a step, so GitHub records it as "skipped" which
-    # branch protection treats as success for an optional check.
-    if: hashFiles('backend/pyproject.toml') != ''
+    # No-op until the backend scaffold lands. GitHub Actions does not expose
+    # hashFiles() in job-level `if:`, so we pull the flag from the preflight
+    # job's outputs instead.
+    needs: preflight
+    if: needs.preflight.outputs.has_backend == 'true'
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -171,8 +197,8 @@ jobs:
   tier1-evals:
     name: Tier 1 evals (Inspect AI)
     runs-on: ubuntu-latest
-    needs: backend-tests
-    if: hashFiles('eval/tier1/golden_set.py') != ''
+    needs: [preflight, backend-tests]
+    if: needs.preflight.outputs.has_eval == 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -197,7 +223,8 @@ jobs:
     name: Frontend lint + typecheck + tests
     runs-on: ubuntu-latest
     # Skipped until the React UI lands (issue #35).
-    if: hashFiles('frontend/package-lock.json') != ''
+    needs: preflight
+    if: needs.preflight.outputs.has_frontend == 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -213,11 +240,12 @@ jobs:
   container-build:
     name: Container build + vulnerability scan
     runs-on: ubuntu-latest
-    needs: [hygiene, backend-tests, frontend-tests]
-    # Only run on push (post-merge) AND only once the Dockerfiles exist.
+    needs: [preflight, hygiene, backend-tests, frontend-tests]
+    # Only run on push (post-merge) AND only once at least one Dockerfile exists.
     if: >-
       github.event_name == 'push'
-      && (hashFiles('backend/Dockerfile') != '' || hashFiles('frontend/Dockerfile') != '')
+      && (needs.preflight.outputs.has_backend_dockerfile == 'true'
+          || needs.preflight.outputs.has_frontend_dockerfile == 'true')
     strategy:
       matrix:
         service: [gateway, retrieval, conformal, audit, frontend]
