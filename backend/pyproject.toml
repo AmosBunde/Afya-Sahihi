@@ -26,6 +26,15 @@ dev = [
     "pyright==1.1.384",
     "bandit[toml]==1.7.10",
 ]
+# Ingestion pulls in Docling + sentence-transformers + PyTorch (~2 GB
+# of models at runtime). Installed only in the ingestion container and
+# on operator workstations that run the CronJob locally — not required
+# by the gateway, retrieval, or conformal services. ADR-0004.
+ingestion = [
+    "docling==2.9.0",
+    "sentence-transformers==3.2.1",
+    "torch==2.4.1",
+]
 
 [build-system]
 requires = ["hatchling>=1.25.0"]
