@@ -176,3 +176,4 @@ scripts/issue_grinder_prompt.sh
 scripts/*.sh
 !scripts/hooks/*.sh
 !scripts/bootstrap_issues.sh
+!scripts/dev_install.sh
