@@ -23,15 +23,13 @@ set +e
 set -e
 assert_rc 0 "$rc" && pass
 
-case_start "red: private async step missing start_as_current_span is rejected"
+case_start "red: private async step missing start_as_current_span is rejected and names SKILL.md §10"
 cat > "$D/backend/app/orchestrator.py" <<'PY'
 class Orchestrator:
     async def _step(self, state):
         return state
 PY
-set +e
-( cd "$D" && "$HOOK" >/dev/null 2>&1 ); rc=$?
-set -e
-assert_rc 1 "$rc" && pass
+run_hook_capture bash -c "cd '$D' && '$HOOK'"
+assert_rc 1 "$CAPTURED_RC" && assert_stderr_contains "SKILL.md §10" && pass
 
 finish

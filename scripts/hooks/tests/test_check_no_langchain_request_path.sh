@@ -17,15 +17,14 @@ set +e
 set -e
 assert_rc 0 "$rc" && pass
 
-# Red 1: top-level `from langchain` import is rejected.
-case_start "red: 'from langchain' import is rejected"
+# Red 1: top-level `from langchain` import is rejected. Also assert the
+# error message points at ADR-0003 so on-call knows why the hook fired.
+case_start "red: 'from langchain' import is rejected with ADR-0003 pointer"
 cat > "$D/bad1.py" <<'PY'
 from langchain.agents import AgentExecutor
 PY
-set +e
-"$HOOK" "$D/bad1.py" >/dev/null 2>&1; rc=$?
-set -e
-assert_rc 1 "$rc" && pass
+run_hook_capture "$HOOK" "$D/bad1.py"
+assert_rc 1 "$CAPTURED_RC" && assert_stderr_contains "docs/adr/0003" && pass
 
 # Red 2: `import langgraph` is rejected.
 case_start "red: 'import langgraph' is rejected"

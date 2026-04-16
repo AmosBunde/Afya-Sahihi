@@ -14,15 +14,13 @@ set +e
 set -e
 assert_rc 0 "$rc" && pass
 
-# Red: logs query_text (PHI).
-case_start "red: logger call with query_text is rejected"
+# Red: logs query_text (PHI). Message must coach the fix: query_id, not text.
+case_start "red: logger call with query_text is rejected with 'query_id, not query_text' coaching"
 cat > "$D/bad.py" <<'PY'
 logger.info("received", extra={"query_text": q.text})
 PY
-set +e
-"$HOOK" "$D/bad.py" >/dev/null 2>&1; rc=$?
-set -e
-assert_rc 1 "$rc" && pass
+run_hook_capture "$HOOK" "$D/bad.py"
+assert_rc 1 "$CAPTURED_RC" && assert_stderr_contains "query_id, not query_text" && pass
 
 # Red: logs patient_name (PHI).
 case_start "red: logger call with patient_name is rejected"

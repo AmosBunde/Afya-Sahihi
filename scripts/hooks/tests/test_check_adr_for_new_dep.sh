@@ -24,7 +24,7 @@ set +e
 set -e
 assert_rc 0 "$rc" && pass
 
-case_start "red: pyproject.toml adds a dep with no ADR staged"
+case_start "red: pyproject.toml adds a dep with no ADR staged, message names ADR requirement"
 mkdir -p "$D/backend"
 cat > "$D/backend/pyproject.toml" <<'TOML'
 [project]
@@ -32,10 +32,8 @@ name = "x"
 dependencies = ["httpx==0.27.0"]
 TOML
 git -C "$D" add backend/pyproject.toml
-set +e
-( cd "$D" && "$HOOK" >/dev/null 2>&1 ); rc=$?
-set -e
-assert_rc 1 "$rc" && pass
+run_hook_capture bash -c "cd '$D' && '$HOOK'"
+assert_rc 1 "$CAPTURED_RC" && assert_stderr_contains "no ADR change" && pass
 
 case_start "green: pyproject.toml change accompanied by ADR is accepted"
 mkdir -p "$D/docs/adr"

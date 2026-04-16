@@ -15,16 +15,14 @@ set +e
 set -e
 assert_rc 0 "$rc" && pass
 
-# Red: bare print() is rejected.
-case_start "red: file with print() is rejected"
+# Red: bare print() is rejected with an actionable pointer to the logger.
+case_start "red: file with print() is rejected and names 'structured logger'"
 cat > "$D/bad.py" <<'PY'
 def handler():
     print("oops")
 PY
-set +e
-"$HOOK" "$D/bad.py" >/dev/null 2>&1; rc=$?
-set -e
-assert_rc 1 "$rc" && pass
+run_hook_capture "$HOOK" "$D/bad.py"
+assert_rc 1 "$CAPTURED_RC" && assert_stderr_contains "structured logger" && pass
 
 # Green-with-noqa: print() with '# noqa: T201' is tolerated.
 case_start "green: print() with 'noqa: T201' escape hatch is accepted"
