@@ -157,11 +157,15 @@ jobs:
     needs: preflight
     if: needs.preflight.outputs.has_backend == 'true'
     services:
+      # ParadeDB image bundles pgvector + pg_search against Postgres 16,
+      # which the initial schema migration requires (ADR-0002, issue #11).
+      # pgvector/pgvector:pg16 does NOT ship pg_search.
       postgres:
-        image: pgvector/pgvector:pg16
+        image: paradedb/paradedb:latest-pg16
         env:
           POSTGRES_PASSWORD: test
           POSTGRES_DB: afya_sahihi_test
+          POSTGRES_USER: postgres
         ports: ["5432:5432"]
         options: >-
           --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
@@ -176,6 +180,10 @@ jobs:
       PG_DATABASE: afya_sahihi_test
       REDIS_HOST: localhost
       HAKIKA_ENV: test
+      # Alembic reads this one DSN; see backend/alembic/env.py.
+      AFYA_SAHIHI_DATABASE_URL: postgresql+psycopg://postgres:test@localhost:5432/afya_sahihi_test
+      # Integration tests reuse the same DSN via the testcontainers fallback.
+      AFYA_SAHIHI_TEST_DATABASE_URL: postgresql+psycopg://postgres:test@localhost:5432/afya_sahihi_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -191,14 +199,18 @@ jobs:
           cd backend
           uv run alembic upgrade head
       - name: Unit tests
+        # Unit test directory lands with later issues; skip gracefully.
+        if: hashFiles('backend/tests/unit/**') != ''
         run: |
           cd backend
           uv run pytest tests/unit -v --cov=app --cov-report=xml
       - name: Integration tests
+        if: hashFiles('backend/tests/integration/**') != ''
         run: |
           cd backend
-          uv run pytest tests/integration -v
+          uv run pytest tests/integration -v -m integration
       - uses: codecov/codecov-action@v4
+        if: hashFiles('backend/coverage.xml') != ''
         with:
           files: backend/coverage.xml
 
