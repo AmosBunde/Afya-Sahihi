@@ -1,5 +1,10 @@
 # Afya Sahihi - CODEOWNERS
 # Routes reviews to the appropriate owner automatically.
+#
+# Some paths below do not exist in the repo yet — they are the planned
+# landing directories for M1–M8 issues. GitHub silently ignores path
+# patterns with no matching files, so keeping the entries in place
+# means the routing takes effect the moment a PR touches the path.
 
 # Default owner for anything not matched
 *                                   @AmosBunde
@@ -21,8 +26,9 @@
 /labeling/                          @AmosBunde
 
 # PHI-adjacent paths — scrubber, validation, audit trail. Any diff
-# here is reviewed by the security owner first; downstream effects
-# include ADR-0002 (audit hash chain) and SKILL.md §0.4.
+# here is reviewed by the security owner first. Governed by SKILL.md
+# §0.4 (scrub before write). The audit hash-chain design lands with
+# issue #13; add an ADR link here once that issue ships an ADR.
 /backend/app/validation/            @AmosBunde
 /backend/audit/                     @AmosBunde
 
