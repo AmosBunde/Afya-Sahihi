@@ -1,0 +1,60 @@
+[project]
+name = "afya-sahihi-backend"
+version = "0.0.1"
+description = "Afya Sahihi backend — gateway, retrieval, conformal, orchestrator."
+requires-python = "==3.12.*"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Aga Khan University" }]
+
+# Exact pins per ADR-0008. No ranges on the request path (SKILL.md §13).
+dependencies = [
+    "alembic==1.13.2",
+    "sqlalchemy==2.0.36",
+    "psycopg[binary]==3.2.3",
+    "asyncpg==0.30.0",
+    "pgvector==0.3.6",
+    "pydantic==2.9.2",
+    "pydantic-settings==2.6.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.3.3",
+    "pytest-asyncio==0.24.0",
+    "testcontainers[postgres]==4.8.2",
+    "ruff==0.6.9",
+    "pyright==1.1.384",
+    "bandit[toml]==1.7.10",
+]
+
+[build-system]
+requires = ["hatchling>=1.25.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "T20"]
+# T201 (print) is enforced project-wide via scripts/hooks/check_no_print.sh.
+# Ruff's T201 is redundant but harmless; keep it on for IDE feedback.
+
+[tool.pyright]
+include = ["app", "tests"]
+strict = ["app", "tests"]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "integration: tests that require a live Postgres via testcontainers",
+]
+
+[tool.bandit]
+exclude_dirs = ["tests", "alembic/versions"]
