@@ -1,0 +1,88 @@
+---
+"area/backend":
+- changed-files:
+  - any-glob-to-any-file: ["backend/**/*"]
+
+"area/frontend":
+- changed-files:
+  - any-glob-to-any-file: ["frontend/**/*"]
+
+"area/labeling-ui":
+- changed-files:
+  - any-glob-to-any-file: ["labeling/**/*"]
+
+"area/eval":
+- changed-files:
+  - any-glob-to-any-file: ["eval/**/*"]
+
+"area/orchestrator":
+- changed-files:
+  - any-glob-to-any-file: ["backend/app/orchestrator.py", "backend/app/state.py"]
+
+"area/retrieval":
+- changed-files:
+  - any-glob-to-any-file: ["backend/retrieval/**/*"]
+
+"area/conformal":
+- changed-files:
+  - any-glob-to-any-file: ["backend/conformal/**/*"]
+
+"area/ingestion":
+- changed-files:
+  - any-glob-to-any-file: ["backend/ingestion/**/*"]
+
+"area/audit":
+- changed-files:
+  - any-glob-to-any-file: ["backend/audit/**/*"]
+
+"area/docs":
+- changed-files:
+  - any-glob-to-any-file: ["docs/**/*", "README.md"]
+
+"area/adr":
+- changed-files:
+  - any-glob-to-any-file: ["docs/adr/**/*"]
+
+"area/deploy":
+- changed-files:
+  - any-glob-to-any-file: ["deploy/**/*"]
+
+"area/env":
+- changed-files:
+  - any-glob-to-any-file: ["env/**/*"]
+
+"area/ci":
+- changed-files:
+  - any-glob-to-any-file: [".github/**/*", ".pre-commit-config.yaml"]
+
+"area/schema":
+- changed-files:
+  - any-glob-to-any-file: ["backend/alembic/**/*"]
+
+"needs-adr":
+- changed-files:
+  - any-glob-to-any-file: ["backend/pyproject.toml", "backend/requirements.txt"]
+
+"touches-request-path":
+- changed-files:
+  - any-glob-to-any-file:
+    - "backend/app/orchestrator.py"
+    - "backend/app/clients/**/*"
+    - "backend/retrieval/**/*"
+    - "backend/conformal/**/*"
+    - "backend/app/api/**/*"
+
+"touches-security":
+- changed-files:
+  - any-glob-to-any-file:
+    - "backend/app/validation/**/*"
+    - "backend/audit/**/*"
+    - ".github/workflows/**/*"
+    - "deploy/k3s/**/*"
+
+"touches-phi":
+- changed-files:
+  - any-glob-to-any-file:
+    - "backend/app/validation/phi.py"
+    - "backend/audit/**/*"
+    - "backend/app/api/chat.py"

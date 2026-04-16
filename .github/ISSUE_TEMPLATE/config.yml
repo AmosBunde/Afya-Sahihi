@@ -1,0 +1,9 @@
+---
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: mailto:security@aku.edu
+    about: Do NOT open a public issue. Email us.
+  - name: Clinical safety concern
+    url: mailto:clinical-safety@aku.edu
+    about: If the issue could affect patient safety, email us directly and do not wait on GitHub.

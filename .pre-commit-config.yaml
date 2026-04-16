@@ -1,0 +1,208 @@
+default_language_version:
+  python: python3.12
+
+default_stages: [pre-commit]
+
+fail_fast: false
+minimum_pre_commit_version: "3.7.0"
+
+repos:
+
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v5.0.0
+  hooks:
+  - id: trailing-whitespace
+    exclude: '\.svg$'
+  - id: end-of-file-fixer
+    exclude: '\.svg$'
+  - id: check-merge-conflict
+  - id: check-yaml
+    args: [--allow-multiple-documents, --unsafe]
+  - id: check-json
+  - id: check-toml
+  - id: check-added-large-files
+    args: [--maxkb=500]
+  - id: check-case-conflict
+  - id: check-executables-have-shebangs
+  - id: check-shebang-scripts-are-executable
+  - id: check-symlinks
+  - id: destroyed-symlinks
+  - id: mixed-line-ending
+    args: [--fix=lf]
+
+- repo: https://github.com/gitleaks/gitleaks
+  rev: v8.21.2
+  hooks:
+  - id: gitleaks
+
+- repo: https://github.com/Yelp/detect-secrets
+  rev: v1.5.0
+  hooks:
+  - id: detect-secrets
+    args: [--baseline, .secrets.baseline]
+    exclude: 'package-lock\.json|uv\.lock|\.env\..*\.example'
+
+- repo: https://github.com/astral-sh/ruff-pre-commit
+  rev: v0.8.4
+  hooks:
+  - id: ruff
+    args: [--fix, --exit-non-zero-on-fix]
+    types_or: [python, pyi]
+  - id: ruff-format
+    types_or: [python, pyi]
+
+- repo: local
+  hooks:
+  - id: pyright
+    name: pyright
+    entry: scripts/hooks/run_pyright.sh
+    language: script
+    types: [python]
+    pass_filenames: false
+    stages: [pre-push]
+
+- repo: https://github.com/PyCQA/bandit
+  rev: 1.8.0
+  hooks:
+  - id: bandit
+    args: [-c, pyproject.toml, -r, backend/]
+    additional_dependencies: ["bandit[toml]"]
+
+- repo: https://github.com/pypa/pip-audit
+  rev: v2.7.3
+  hooks:
+  - id: pip-audit
+    args: [--strict]
+    stages: [pre-push]
+    files: ^backend/(requirements\.txt|pyproject\.toml)$
+
+- repo: local
+  hooks:
+  - id: eslint
+    name: eslint
+    entry: scripts/hooks/run_eslint.sh
+    language: script
+    types_or: [ts, tsx]
+    pass_filenames: false
+  - id: typecheck-frontend
+    name: tsc-noEmit
+    entry: scripts/hooks/run_tsc.sh
+    language: script
+    types_or: [ts, tsx]
+    pass_filenames: false
+
+- repo: https://github.com/adrienverge/yamllint
+  rev: v1.35.1
+  hooks:
+  - id: yamllint
+    args: [-c=.yamllint.yaml]
+    files: ^(deploy/|\.github/)
+
+- repo: local
+  hooks:
+  - id: kubeconform
+    name: kubeconform
+    entry: scripts/hooks/run_kubeconform.sh
+    language: script
+    files: ^deploy/k3s/.*\.yaml$
+    pass_filenames: false
+
+- repo: https://github.com/sqlfluff/sqlfluff
+  rev: 3.2.5
+  hooks:
+  - id: sqlfluff-lint
+    args: [--dialect, postgres]
+    files: ^backend/alembic/versions/.*\.py$|\.sql$
+
+- repo: https://github.com/shellcheck-py/shellcheck-py
+  rev: v0.10.0.1
+  hooks:
+  - id: shellcheck
+    args: [-x, --severity=warning]
+
+- repo: https://github.com/compilerla/conventional-pre-commit
+  rev: v3.6.0
+  hooks:
+  - id: conventional-pre-commit
+    stages: [commit-msg]
+    args:
+      - --strict
+      - --force-scope
+      - feat
+      - fix
+      - docs
+      - style
+      - refactor
+      - perf
+      - test
+      - build
+      - ci
+      - chore
+      - revert
+      - security
+
+- repo: local
+  hooks:
+  - id: no-langchain-on-request-path
+    name: no-langchain-on-request-path
+    entry: scripts/hooks/check_no_langchain_request_path.sh
+    language: script
+    files: ^backend/app/(orchestrator|api|clients)/.*\.py$
+    pass_filenames: true
+  - id: no-print-statements
+    name: no-print-statements
+    entry: scripts/hooks/check_no_print.sh
+    language: script
+    files: ^backend/app/.*\.py$
+    exclude: ^backend/(tests|scripts)/
+    pass_filenames: true
+  - id: every-external-call-has-timeout
+    name: every-external-call-has-timeout
+    entry: scripts/hooks/check_httpx_timeouts.sh
+    language: script
+    files: ^backend/.*\.py$
+    pass_filenames: true
+  - id: every-asyncpg-has-statement-timeout
+    name: every-asyncpg-has-statement-timeout
+    entry: scripts/hooks/check_asyncpg_timeouts.sh
+    language: script
+    files: ^backend/app/repository/.*\.py$
+    pass_filenames: true
+  - id: orchestrator-line-cap
+    name: orchestrator-line-cap
+    entry: scripts/hooks/check_orchestrator_lines.sh
+    language: script
+    files: ^backend/app/orchestrator\.py$
+    pass_filenames: true
+  - id: env-documented
+    name: env-documented
+    entry: scripts/hooks/check_env_documented.sh
+    language: script
+    files: ^(backend/app/settings\.py|env/.*\.env)$
+    pass_filenames: false
+  - id: adr-required-for-new-dependency
+    name: adr-required-for-new-dependency
+    entry: scripts/hooks/check_adr_for_new_dep.sh
+    language: script
+    files: ^backend/(pyproject\.toml|requirements\.txt)$
+    pass_filenames: false
+    stages: [pre-push]
+  - id: tier1-evals
+    name: tier1-evals
+    entry: scripts/hooks/run_tier1_evals.sh
+    language: script
+    stages: [pre-push]
+    pass_filenames: false
+    verbose: true
+  - id: no-phi-in-logs
+    name: no-phi-in-logs
+    entry: scripts/hooks/check_no_phi_in_logs.sh
+    language: script
+    files: ^backend/.*\.py$
+    pass_filenames: true
+  - id: every-state-transition-emits-span
+    name: every-state-transition-emits-span
+    entry: scripts/hooks/check_span_per_transition.sh
+    language: script
+    files: ^backend/app/orchestrator\.py$
+    pass_filenames: true

@@ -1,0 +1,30 @@
+# Afya Sahihi - CODEOWNERS
+# Routes reviews to the appropriate owner automatically.
+
+# Default owner for anything not matched
+*                                   @AmosBunde
+
+# Architecture decisions require principal review
+/docs/adr/                          @AmosBunde
+
+# Orchestrator is load-bearing, review it carefully
+/backend/app/orchestrator.py        @AmosBunde
+/backend/app/state.py               @AmosBunde
+
+# Conformal prediction is research-sensitive
+/backend/conformal/                 @AmosBunde
+/docs/adr/0006-*                    @AmosBunde
+/docs/adr/0007-*                    @AmosBunde
+
+# Clinical evaluation harness changes require clinician visibility
+/eval/                              @AmosBunde
+/labeling/                          @AmosBunde
+
+# Security-impacting paths
+/.github/workflows/                 @AmosBunde
+/.pre-commit-config.yaml            @AmosBunde
+/deploy/                            @AmosBunde
+/env/                               @AmosBunde
+
+# Data layer (migrations and schema)
+/backend/alembic/                   @AmosBunde

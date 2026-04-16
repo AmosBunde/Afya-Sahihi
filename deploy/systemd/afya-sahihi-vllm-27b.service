@@ -1,0 +1,60 @@
+[Unit]
+Description=Afya Gemma Afya Sahihi - vLLM MedGemma 27B inference server
+Documentation=https://github.com/aku/afya-sahihi/blob/main/docs/adr/0001-self-host-medgemma-on-vllm.md
+After=network-online.target nvidia-persistenced.service
+Wants=network-online.target
+Requires=nvidia-persistenced.service
+
+[Service]
+Type=notify
+User=afya-sahihi
+Group=afya-sahihi
+WorkingDirectory=/srv/afya-sahihi
+EnvironmentFile=/etc/afya-sahihi/env/vllm-27b.env
+EnvironmentFile=/etc/afya-sahihi/env/.env.root
+
+# Credential-based secrets (systemd >= 250) instead of env for sensitive values
+LoadCredential=hf_token:/etc/afya-sahihi/secrets/hf-token
+LoadCredential=api_key:/etc/afya-sahihi/secrets/vllm-27b-api-key
+
+# Health check port
+ExecStartPre=/usr/local/bin/afya-sahihi-preflight-27b
+ExecStart=/usr/local/bin/afya-sahihi-vllm-27b-launch
+ExecStop=/bin/kill -TERM $MAINPID
+
+# Give vLLM time to load 27B weights (can be 60-120s cold)
+TimeoutStartSec=300
+TimeoutStopSec=60
+
+Restart=on-failure
+RestartSec=30
+StartLimitIntervalSec=600
+StartLimitBurst=3
+
+# Resource limits
+LimitNOFILE=1048576
+LimitNPROC=65536
+LimitMEMLOCK=infinity
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadWritePaths=/srv/afya-sahihi /var/log/afya-sahihi /tmp
+# GPU access requires device access
+DeviceAllow=/dev/nvidia* rwm
+DeviceAllow=/dev/nvidia-caps/* rwm
+DeviceAllow=char-nvidia-uvm rwm
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=afya-sahihi-vllm-27b
+
+[Install]
+WantedBy=multi-user.target

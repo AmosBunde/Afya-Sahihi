@@ -1,0 +1,83 @@
+---
+name: Feature
+description: Propose a new capability or enhancement
+title: "[feat] "
+labels: ["type/feature"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for proposing a feature. Before submitting, check whether an ADR is required
+        (any new dependency, any change to the request path, any change to the data model).
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem does this feature solve? Who hits it today?
+      placeholder: Clinicians at AKU cannot...
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What are you proposing? Be concrete about the surface area.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Checklist of what "done" looks like.
+      value: |
+        - [ ]
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+
+  - type: textarea
+    id: non-goals
+    attributes:
+      label: Non-goals
+      description: What is explicitly out of scope for this issue?
+
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks and trade-offs
+      description: What could go wrong? What other approach did you consider and why did you not take it?
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - orchestrator
+        - retrieval
+        - conformal
+        - ingestion
+        - audit
+        - eval
+        - frontend
+        - labeling-ui
+        - deploy
+        - docs
+        - other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - "P0 (blocker)"
+        - "P1 (this sprint)"
+        - "P2 (this quarter)"
+        - "P3 (someday)"
+    validations:
+      required: true

@@ -1,0 +1,248 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1100" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#555"/>
+    </marker>
+    <style>
+      .component { fill: #85BBF0; stroke: #5B9BD5; stroke-width: 1.8; }
+      .gateway-comp { fill: #438DD5; stroke: #2E6295; stroke-width: 2; }
+      .retrieval-comp { fill: #62B585; stroke: #3D8C5C; stroke-width: 2; }
+      .conformal-comp { fill: #E69F50; stroke: #B67A38; stroke-width: 2; }
+      .llm-comp { fill: #A63D2A; stroke: #7A2D1E; stroke-width: 2; }
+      .datastore { fill: #2E7D5A; stroke: #1E5D40; stroke-width: 2; }
+      .label-white { fill: white; font-weight: bold; font-size: 11px; }
+      .label-sub { fill: #f0f0f0; font-size: 9px; }
+      .label-tech { fill: #eaeaea; font-size: 8px; font-style: italic; }
+      .arrow-line { stroke: #555; stroke-width: 1.2; fill: none; }
+      .arrow-label { fill: #333; font-size: 10px; }
+      .arrow-num { fill: #A63D2A; font-size: 11px; font-weight: bold; }
+      .boundary { fill: #f8f8fa; stroke: #888; stroke-width: 1.5; stroke-dasharray: 6,3; }
+      .boundary-label { fill: #333; font-size: 13px; font-weight: bold; }
+      .title { font-size: 22px; font-weight: bold; fill: #111; }
+      .subtitle { font-size: 12px; fill: #555; }
+      .step { font-size: 11px; fill: #666; }
+    </style>
+  </defs>
+
+  <text x="40" y="35" class="title">Afya Sahihi — C4 Level 3: Components (inference path)</text>
+  <text x="40" y="55" class="subtitle">One clinical query from ingress to response. Numbered steps match the sequence.</text>
+
+  <rect x="40" y="100" width="140" height="70" rx="6" class="gateway-comp"/>
+  <text x="110" y="130" text-anchor="middle" class="label-white">Clinician Browser</text>
+  <text x="110" y="150" text-anchor="middle" class="label-sub">React chat UI</text>
+
+  <rect x="220" y="85" width="480" height="500" rx="8" class="boundary"/>
+  <text x="460" y="105" text-anchor="middle" class="boundary-label">Gateway API (FastAPI + asyncpg + Pydantic v2 strict)</text>
+
+  <rect x="240" y="130" width="200" height="75" rx="5" class="gateway-comp"/>
+  <text x="340" y="155" text-anchor="middle" class="label-white">Auth Middleware</text>
+  <text x="340" y="175" text-anchor="middle" class="label-sub">OIDC via Keycloak,</text>
+  <text x="340" y="188" text-anchor="middle" class="label-sub">role-based policy</text>
+
+  <rect x="460" y="130" width="220" height="75" rx="5" class="gateway-comp"/>
+  <text x="570" y="155" text-anchor="middle" class="label-white">Query Validator</text>
+  <text x="570" y="175" text-anchor="middle" class="label-sub">Pydantic strict mode,</text>
+  <text x="570" y="188" text-anchor="middle" class="label-sub">PHI scrubber, length bounds</text>
+
+  <rect x="240" y="225" width="440" height="100" rx="5" class="gateway-comp"/>
+  <text x="460" y="252" text-anchor="middle" class="label-white" font-size="12">Pipeline Orchestrator (explicit state machine)</text>
+  <text x="460" y="272" text-anchor="middle" class="label-sub">Typed PipelineState dataclass, pure functions between states.</text>
+  <text x="460" y="288" text-anchor="middle" class="label-sub">State graph: validated → prefiltered → retrieved → generated → reviewed → conformal → logged</text>
+  <text x="460" y="308" text-anchor="middle" class="label-tech">NO LangGraph. One file you can print() and grep. Every transition emits OTel span.</text>
+
+  <rect x="240" y="345" width="140" height="75" rx="5" class="gateway-comp"/>
+  <text x="310" y="370" text-anchor="middle" class="label-white">Pre-filter Client</text>
+  <text x="310" y="390" text-anchor="middle" class="label-sub">Calls vLLM 4B,</text>
+  <text x="310" y="402" text-anchor="middle" class="label-sub">topic classifier head</text>
+
+  <rect x="400" y="345" width="140" height="75" rx="5" class="gateway-comp"/>
+  <text x="470" y="370" text-anchor="middle" class="label-white">Retrieval Client</text>
+  <text x="470" y="390" text-anchor="middle" class="label-sub">Calls Retrieval svc,</text>
+  <text x="470" y="402" text-anchor="middle" class="label-sub">hybrid dense + BM25</text>
+
+  <rect x="560" y="345" width="140" height="75" rx="5" class="gateway-comp"/>
+  <text x="630" y="370" text-anchor="middle" class="label-white">Generation Client</text>
+  <text x="630" y="390" text-anchor="middle" class="label-sub">Calls vLLM 27B,</text>
+  <text x="630" y="402" text-anchor="middle" class="label-sub">streams tokens + logprobs</text>
+
+  <rect x="240" y="440" width="140" height="75" rx="5" class="gateway-comp"/>
+  <text x="310" y="465" text-anchor="middle" class="label-white">Strict Review</text>
+  <text x="310" y="485" text-anchor="middle" class="label-sub">Optional second pass,</text>
+  <text x="310" y="497" text-anchor="middle" class="label-sub">safety + coherence</text>
+
+  <rect x="400" y="440" width="140" height="75" rx="5" class="gateway-comp"/>
+  <text x="470" y="465" text-anchor="middle" class="label-white">Conformal Client</text>
+  <text x="470" y="485" text-anchor="middle" class="label-sub">Requests prediction set,</text>
+  <text x="470" y="497" text-anchor="middle" class="label-sub">coverage at 1-alpha</text>
+
+  <rect x="560" y="440" width="140" height="75" rx="5" class="gateway-comp"/>
+  <text x="630" y="465" text-anchor="middle" class="label-white">Audit Writer</text>
+  <text x="630" y="485" text-anchor="middle" class="label-sub">Immutable log row,</text>
+  <text x="630" y="497" text-anchor="middle" class="label-sub">full JSON schema</text>
+
+  <rect x="240" y="530" width="440" height="45" rx="5" class="gateway-comp"/>
+  <text x="460" y="558" text-anchor="middle" class="label-white">Response Assembler — SSE stream with provenance, set, coverage, citation links</text>
+
+  <rect x="740" y="85" width="460" height="300" rx="8" class="boundary"/>
+  <text x="970" y="105" text-anchor="middle" class="boundary-label">Retrieval Service (FastAPI)</text>
+
+  <rect x="760" y="130" width="200" height="70" rx="5" class="retrieval-comp"/>
+  <text x="860" y="155" text-anchor="middle" class="label-white">Query Embedder</text>
+  <text x="860" y="173" text-anchor="middle" class="label-sub">BGE-M3 dense,</text>
+  <text x="860" y="185" text-anchor="middle" class="label-sub">matryoshka-truncated 512</text>
+
+  <rect x="980" y="130" width="200" height="70" rx="5" class="retrieval-comp"/>
+  <text x="1080" y="155" text-anchor="middle" class="label-white">Query Router</text>
+  <text x="1080" y="173" text-anchor="middle" class="label-sub">ICD-10 filter, facility,</text>
+  <text x="1080" y="185" text-anchor="middle" class="label-sub">language, recency</text>
+
+  <rect x="760" y="220" width="200" height="70" rx="5" class="retrieval-comp"/>
+  <text x="860" y="245" text-anchor="middle" class="label-white">Dense Searcher</text>
+  <text x="860" y="263" text-anchor="middle" class="label-sub">pgvector HNSW,</text>
+  <text x="860" y="275" text-anchor="middle" class="label-sub">cosine, metadata filters</text>
+
+  <rect x="980" y="220" width="200" height="70" rx="5" class="retrieval-comp"/>
+  <text x="1080" y="245" text-anchor="middle" class="label-white">BM25 Searcher</text>
+  <text x="1080" y="263" text-anchor="middle" class="label-sub">Tantivy index via</text>
+  <text x="1080" y="275" text-anchor="middle" class="label-sub">pg_search, exact terms</text>
+
+  <rect x="760" y="310" width="200" height="60" rx="5" class="retrieval-comp"/>
+  <text x="860" y="335" text-anchor="middle" class="label-white">Reciprocal Rank Fusion</text>
+  <text x="860" y="352" text-anchor="middle" class="label-sub">RRF merge of dense + BM25</text>
+
+  <rect x="980" y="310" width="200" height="60" rx="5" class="retrieval-comp"/>
+  <text x="1080" y="335" text-anchor="middle" class="label-white">Cross-encoder Reranker</text>
+  <text x="1080" y="352" text-anchor="middle" class="label-sub">bge-reranker-v2-m3, top-K out</text>
+
+  <rect x="740" y="410" width="460" height="200" rx="8" class="boundary"/>
+  <text x="970" y="430" text-anchor="middle" class="boundary-label">Conformal Service (FastAPI)</text>
+
+  <rect x="760" y="450" width="200" height="65" rx="5" class="conformal-comp"/>
+  <text x="860" y="473" text-anchor="middle" class="label-white">Score Computer</text>
+  <text x="860" y="490" text-anchor="middle" class="label-sub">5 nonconformity scores,</text>
+  <text x="860" y="502" text-anchor="middle" class="label-sub">clinical-harm-weighted</text>
+
+  <rect x="980" y="450" width="200" height="65" rx="5" class="conformal-comp"/>
+  <text x="1080" y="473" text-anchor="middle" class="label-white">Quantile Fetcher</text>
+  <text x="1080" y="490" text-anchor="middle" class="label-sub">Cached q_hat by stratum,</text>
+  <text x="1080" y="502" text-anchor="middle" class="label-sub">weighted CP for shift</text>
+
+  <rect x="760" y="530" width="200" height="65" rx="5" class="conformal-comp"/>
+  <text x="860" y="553" text-anchor="middle" class="label-white">Set Constructor</text>
+  <text x="860" y="570" text-anchor="middle" class="label-sub">Prediction set at 1-alpha,</text>
+  <text x="860" y="582" text-anchor="middle" class="label-sub">efficiency optimized</text>
+
+  <rect x="980" y="530" width="200" height="65" rx="5" class="conformal-comp"/>
+  <text x="1080" y="553" text-anchor="middle" class="label-white">Coverage Monitor</text>
+  <text x="1080" y="570" text-anchor="middle" class="label-sub">Rolling coverage per subgroup,</text>
+  <text x="1080" y="582" text-anchor="middle" class="label-sub">drift alerts to Prom</text>
+
+  <rect x="1240" y="85" width="320" height="320" rx="8" class="boundary"/>
+  <text x="1400" y="105" text-anchor="middle" class="boundary-label">vLLM Serving (H100)</text>
+
+  <rect x="1260" y="130" width="280" height="110" rx="5" class="llm-comp"/>
+  <text x="1400" y="158" text-anchor="middle" class="label-white" font-size="12">vLLM: MedGemma 27B</text>
+  <text x="1400" y="178" text-anchor="middle" class="label-sub">FP8 quantized</text>
+  <text x="1400" y="193" text-anchor="middle" class="label-sub">prefix caching on</text>
+  <text x="1400" y="208" text-anchor="middle" class="label-sub">speculative decoding via 4B</text>
+  <text x="1400" y="223" text-anchor="middle" class="label-sub">exposes logprobs + top_logprobs</text>
+
+  <rect x="1260" y="260" width="280" height="130" rx="5" class="llm-comp"/>
+  <text x="1400" y="288" text-anchor="middle" class="label-white" font-size="12">vLLM: MedGemma 4B</text>
+  <text x="1400" y="308" text-anchor="middle" class="label-sub">BF16, draft + classifier</text>
+  <text x="1400" y="325" text-anchor="middle" class="label-sub">Dual role:</text>
+  <text x="1400" y="342" text-anchor="middle" class="label-sub">1) topic classifier (pre-filter)</text>
+  <text x="1400" y="359" text-anchor="middle" class="label-sub">2) draft model for 27B speculative</text>
+  <text x="1400" y="376" text-anchor="middle" class="label-sub">Shared GPU, SM partitioned</text>
+
+  <rect x="1240" y="430" width="320" height="310" rx="8" class="boundary"/>
+  <text x="1400" y="450" text-anchor="middle" class="boundary-label">Data Layer</text>
+
+  <rect x="1260" y="475" width="280" height="180" rx="5" class="datastore"/>
+  <text x="1400" y="500" text-anchor="middle" class="label-white" font-size="12">Postgres 16</text>
+  <text x="1400" y="520" text-anchor="middle" class="label-sub">Tables:</text>
+  <text x="1400" y="535" text-anchor="middle" class="label-sub">• chunks (content, embedding vector(1024),</text>
+  <text x="1400" y="548" text-anchor="middle" class="label-sub">   bm25_tsvector, structural_meta JSONB)</text>
+  <text x="1400" y="563" text-anchor="middle" class="label-sub">• queries (audit log, full JSON schema)</text>
+  <text x="1400" y="578" text-anchor="middle" class="label-sub">• calibration_set (conformal data)</text>
+  <text x="1400" y="593" text-anchor="middle" class="label-sub">• grades (clinician ratings)</text>
+  <text x="1400" y="608" text-anchor="middle" class="label-sub">• eval_runs (Inspect AI results)</text>
+  <text x="1400" y="623" text-anchor="middle" class="label-sub">Extensions: pgvector, pg_search (Tantivy),</text>
+  <text x="1400" y="636" text-anchor="middle" class="label-sub">pg_stat_statements, pgcrypto, pg_cron</text>
+
+  <rect x="1260" y="670" width="135" height="55" rx="5" class="datastore"/>
+  <text x="1327" y="695" text-anchor="middle" class="label-white">MinIO</text>
+  <text x="1327" y="712" text-anchor="middle" class="label-sub">PDFs, model cache</text>
+
+  <rect x="1405" y="670" width="135" height="55" rx="5" class="datastore"/>
+  <text x="1472" y="695" text-anchor="middle" class="label-white">Redis</text>
+  <text x="1472" y="712" text-anchor="middle" class="label-sub">Rate limit, queue</text>
+
+  <path d="M 180 135 L 240 155" class="arrow-line" marker-end="url(#arrow)"/>
+  <text x="185" y="120" class="arrow-num">1</text>
+
+  <path d="M 440 165 L 460 165" class="arrow-line" marker-end="url(#arrow)"/>
+  <text x="445" y="148" class="arrow-num">2</text>
+
+  <path d="M 570 205 L 540 225" class="arrow-line" marker-end="url(#arrow)"/>
+  <text x="545" y="220" class="arrow-num">3</text>
+
+  <path d="M 360 325 L 310 345" class="arrow-line" marker-end="url(#arrow)"/>
+  <text x="360" y="340" class="arrow-num">4a</text>
+
+  <path d="M 380 385 Q 900 385 1260 320" class="arrow-line" marker-end="url(#arrow)"/>
+  <text x="820" y="430" class="arrow-num">4b</text>
+
+  <path d="M 460 325 L 470 345" class="arrow-line" marker-end="url(#arrow)"/>
+  <text x="475" y="340" class="arrow-num">5a</text>
+
+  <path d="M 540 380 L 760 165" class="arrow-line" marker-end="url(#arrow)"/>
+  <text x="650" y="265" class="arrow-num">5b</text>
+
+  <path d="M 860 200 L 860 220" class="arrow-line" marker-end="url(#arrow)"/>
+  <path d="M 1080 200 L 1080 220" class="arrow-line" marker-end="url(#arrow)"/>
+  <path d="M 860 290 L 860 310" class="arrow-line" marker-end="url(#arrow)"/>
+  <path d="M 1080 290 L 1080 310" class="arrow-line" marker-end="url(#arrow)"/>
+  <path d="M 960 340 L 980 340" class="arrow-line" marker-end="url(#arrow)"/>
+
+  <path d="M 1180 255 L 1260 560" class="arrow-line" marker-end="url(#arrow)"/>
+  <text x="1220" y="400" class="arrow-num">5c</text>
+
+  <path d="M 560 325 L 630 345" class="arrow-line" marker-end="url(#arrow)"/>
+  <text x="610" y="340" class="arrow-num">6a</text>
+
+  <path d="M 700 380 L 1260 180" class="arrow-line" marker-end="url(#arrow)"/>
+  <text x="990" y="290" class="arrow-num">6b</text>
+
+  <path d="M 380 475 L 630 500" class="arrow-line" marker-end="url(#arrow)"/>
+  <text x="460" y="518" class="arrow-num">7</text>
+
+  <path d="M 540 475 L 760 470" class="arrow-line" marker-end="url(#arrow)"/>
+  <text x="640" y="460" class="arrow-num">8a</text>
+
+  <path d="M 860 515 L 860 530" class="arrow-line" marker-end="url(#arrow)"/>
+  <path d="M 1080 515 L 1080 530" class="arrow-line" marker-end="url(#arrow)"/>
+
+  <path d="M 1180 480 L 1260 540" class="arrow-line" marker-end="url(#arrow)"/>
+  <text x="1210" y="515" class="arrow-num">8b</text>
+
+  <path d="M 700 475 L 1260 580" class="arrow-line" marker-end="url(#arrow)"/>
+  <text x="1000" y="540" class="arrow-num">9</text>
+
+  <path d="M 240 555 L 180 170" class="arrow-line" marker-end="url(#arrow)"/>
+  <text x="200" y="400" class="arrow-num">10</text>
+
+  <g transform="translate(40, 760)">
+    <text x="0" y="0" font-size="14" font-weight="bold">Request flow (numbered on diagram)</text>
+    <text x="0" y="25" class="step">1 — Clinician submits query, HTTPS to Traefik → Gateway</text>
+    <text x="0" y="42" class="step">2 — OIDC auth check, role and facility claims loaded</text>
+    <text x="0" y="59" class="step">3 — Pydantic strict validation, PHI scrubbed, pipeline state initialized</text>
+    <text x="0" y="76" class="step">4a/b — Pre-filter classifier (MedGemma 4B) scores topic coherence</text>
+    <text x="0" y="93" class="step">5a/b/c — Retrieval: embed query → dense (pgvector) + BM25 (Tantivy) → RRF → cross-encoder rerank</text>
+    <text x="0" y="110" class="step">6a/b — Generation on MedGemma 27B with prefix cache and speculative decoding from 4B draft</text>
+    <text x="0" y="127" class="step">7 — Optional strict review pass for safety-critical categories (dosing, contraindications)</text>
+    <text x="0" y="144" class="step">8a/b — Conformal prediction set constructed, coverage recorded, drift check</text>
+    <text x="0" y="161" class="step">9 — Full JSON audit row written (immutable, IRB-compliant)</text>
+    <text x="0" y="178" class="step">10 — SSE stream to client with tokens, provenance, prediction set, citations</text>
+  </g>
+</svg>

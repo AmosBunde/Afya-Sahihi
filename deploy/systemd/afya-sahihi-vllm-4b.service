@@ -1,0 +1,53 @@
+[Unit]
+Description=Afya Gemma Afya Sahihi - vLLM MedGemma 4B pre-filter server
+Documentation=https://github.com/aku/afya-sahihi/blob/main/docs/adr/0007-medgemma-4b-dual-role.md
+After=network-online.target nvidia-persistenced.service afya-sahihi-vllm-27b.service
+Wants=network-online.target
+# 4B shares the GPU with 27B. Start after 27B has reserved its slice.
+
+[Service]
+Type=notify
+User=afya-sahihi
+Group=afya-sahihi
+WorkingDirectory=/srv/afya-sahihi
+EnvironmentFile=/etc/afya-sahihi/env/vllm-4b.env
+EnvironmentFile=/etc/afya-sahihi/env/.env.root
+
+LoadCredential=hf_token:/etc/afya-sahihi/secrets/hf-token
+LoadCredential=api_key:/etc/afya-sahihi/secrets/vllm-4b-api-key
+
+ExecStartPre=/usr/local/bin/afya-sahihi-preflight-4b
+ExecStart=/usr/local/bin/afya-sahihi-vllm-4b-launch
+ExecStop=/bin/kill -TERM $MAINPID
+
+TimeoutStartSec=180
+TimeoutStopSec=60
+
+Restart=on-failure
+RestartSec=30
+StartLimitIntervalSec=600
+StartLimitBurst=3
+
+LimitNOFILE=1048576
+LimitNPROC=65536
+LimitMEMLOCK=infinity
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadWritePaths=/srv/afya-sahihi /var/log/afya-sahihi /tmp
+DeviceAllow=/dev/nvidia* rwm
+DeviceAllow=/dev/nvidia-caps/* rwm
+DeviceAllow=char-nvidia-uvm rwm
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=afya-sahihi-vllm-4b
+
+[Install]
+WantedBy=multi-user.target

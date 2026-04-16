@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# =====================================================================
+# afya-sahihi-vllm-27b-launch
+# Launcher for the MedGemma 27B vLLM server on afya-sahihi-gpu-01.
+# Consumes env from /etc/afya-sahihi/env/vllm-27b.env via systemd EnvironmentFile.
+# =====================================================================
+
+set -euo pipefail
+
+# Credentials come from LoadCredential= in the systemd unit
+HF_TOKEN="$(cat "${CREDENTIALS_DIRECTORY}/hf_token")"
+VLLM_API_KEY="$(cat "${CREDENTIALS_DIRECTORY}/api_key")"
+export HF_TOKEN
+
+# Ensure HF cache dir exists and is writable
+mkdir -p "${HF_HOME}" "${VLLM_CACHE_ROOT}" "${VLLM_DOWNLOAD_DIR}"
+
+# Preflight: GPU visible
+if ! nvidia-smi --query-gpu=name --format=csv,noheader >/dev/null 2>&1; then
+  echo "FATAL: no GPU visible to this process" >&2
+  exit 1
+fi
+
+# Preflight: required disk space (30GB minimum)
+AVAIL_KB=$(df -k "${VLLM_DOWNLOAD_DIR}" | awk 'NR==2 {print $4}')
+REQUIRED_KB=$((30 * 1024 * 1024))
+if [[ "${AVAIL_KB}" -lt "${REQUIRED_KB}" ]]; then
+  echo "FATAL: insufficient disk space in ${VLLM_DOWNLOAD_DIR}" >&2
+  exit 1
+fi
+
+# Build launch args. Every meaningful knob is sourced from .env files.
+ARGS=(
+  --model "${VLLM_MODEL}"
+  --served-model-name "${VLLM_SERVED_MODEL_NAME}"
+  --download-dir "${VLLM_DOWNLOAD_DIR}"
+  --host "${VLLM_HOST}"
+  --port "${VLLM_PORT}"
+  --gpu-memory-utilization "${VLLM_GPU_MEMORY_UTILIZATION}"
+  --tensor-parallel-size "${VLLM_TENSOR_PARALLEL_SIZE}"
+  --pipeline-parallel-size "${VLLM_PIPELINE_PARALLEL_SIZE}"
+  --max-num-seqs "${VLLM_MAX_NUM_SEQS}"
+  --max-num-batched-tokens "${VLLM_MAX_NUM_BATCHED_TOKENS}"
+  --max-model-len "${VLLM_MAX_MODEL_LEN}"
+  --swap-space "${VLLM_SWAP_SPACE_GB}"
+  --quantization "${VLLM_QUANTIZATION}"
+  --kv-cache-dtype "${VLLM_KV_CACHE_DTYPE}"
+  --uvicorn-log-level "${VLLM_UVICORN_LOG_LEVEL}"
+  --api-key "${VLLM_API_KEY}"
+)
+
+# Prefix caching
+if [[ "${VLLM_ENABLE_PREFIX_CACHING}" == "true" ]]; then
+  ARGS+=(--enable-prefix-caching)
+fi
+
+# Speculative decoding with 4B as draft (ADR-0007)
+if [[ -n "${VLLM_SPECULATIVE_MODEL:-}" ]]; then
+  ARGS+=(
+    --speculative-model "${VLLM_SPECULATIVE_MODEL}"
+    --num-speculative-tokens "${VLLM_NUM_SPECULATIVE_TOKENS}"
+    --spec-decoding-acceptance-method "${VLLM_SPEC_DECODING_ACCEPTANCE_METHOD}"
+  )
+fi
+
+# Trust remote code explicitly off unless overridden
+if [[ "${VLLM_TRUST_REMOTE_CODE}" == "true" ]]; then
+  ARGS+=(--trust-remote-code)
+fi
+
+# Logprobs for conformal scoring (ADR-0006, mandatory)
+if [[ "${VLLM_ENABLE_LOG_PROBS}" == "true" ]]; then
+  ARGS+=(--max-logprobs "${VLLM_MAX_LOG_PROBS}")
+fi
+
+# OpenTelemetry
+export OTEL_SERVICE_NAME OTEL_EXPORTER_OTLP_ENDPOINT OTEL_RESOURCE_ATTRIBUTES
+
+echo "Launching vLLM 27B with args: ${ARGS[*]}"
+exec /usr/local/bin/vllm serve "${ARGS[@]}"

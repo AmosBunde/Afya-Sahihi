@@ -1,0 +1,114 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#555"/>
+    </marker>
+    <style>
+      .person-box { fill: #08427B; stroke: #073B6F; stroke-width: 2; }
+      .system-box { fill: #1168BD; stroke: #0E5AA7; stroke-width: 2; }
+      .external-box { fill: #999999; stroke: #6B6B6B; stroke-width: 2; }
+      .label-white { fill: white; font-weight: bold; }
+      .label-sub { fill: #e0e0e0; font-size: 12px; }
+      .arrow-label { fill: #333; font-size: 11px; }
+      .arrow-line { stroke: #555; stroke-width: 1.5; fill: none; }
+      .title { font-size: 24px; font-weight: bold; fill: #111; }
+      .subtitle { font-size: 13px; fill: #555; }
+    </style>
+  </defs>
+
+  <text x="40" y="40" class="title">Afya Sahihi — C4 Level 1: System Context</text>
+  <text x="40" y="62" class="subtitle">Clinical decision support for Kenyan healthcare. Traceable, calibrated, self-hosted.</text>
+
+  <rect x="80" y="120" width="200" height="110" rx="8" class="person-box"/>
+  <text x="180" y="155" text-anchor="middle" class="label-white" font-size="14">Clinician</text>
+  <text x="180" y="175" text-anchor="middle" class="label-sub">[Person]</text>
+  <text x="180" y="200" text-anchor="middle" class="label-sub">Registrar, MO, nurse</text>
+  <text x="180" y="215" text-anchor="middle" class="label-sub">at AKU pilot sites</text>
+
+  <rect x="80" y="280" width="200" height="110" rx="8" class="person-box"/>
+  <text x="180" y="315" text-anchor="middle" class="label-white" font-size="14">Clinical Reviewer</text>
+  <text x="180" y="335" text-anchor="middle" class="label-sub">[Person]</text>
+  <text x="180" y="360" text-anchor="middle" class="label-sub">Senior clinician grading</text>
+  <text x="180" y="375" text-anchor="middle" class="label-sub">eval and active learning</text>
+
+  <rect x="80" y="440" width="200" height="110" rx="8" class="person-box"/>
+  <text x="180" y="475" text-anchor="middle" class="label-white" font-size="14">Research Team</text>
+  <text x="180" y="495" text-anchor="middle" class="label-sub">[Person]</text>
+  <text x="180" y="520" text-anchor="middle" class="label-sub">PhD author, eval runners,</text>
+  <text x="180" y="535" text-anchor="middle" class="label-sub">paper experiments</text>
+
+  <rect x="80" y="600" width="200" height="110" rx="8" class="person-box"/>
+  <text x="180" y="635" text-anchor="middle" class="label-white" font-size="14">SRE / Platform</text>
+  <text x="180" y="655" text-anchor="middle" class="label-sub">[Person]</text>
+  <text x="180" y="680" text-anchor="middle" class="label-sub">Deploy, observe,</text>
+  <text x="180" y="695" text-anchor="middle" class="label-sub">incident response</text>
+
+  <rect x="450" y="280" width="300" height="240" rx="12" class="system-box"/>
+  <text x="600" y="320" text-anchor="middle" class="label-white" font-size="18">Afya Sahihi</text>
+  <text x="600" y="345" text-anchor="middle" class="label-sub">[Software System]</text>
+  <text x="600" y="380" text-anchor="middle" class="label-sub" font-size="13">Clinical decision support</text>
+  <text x="600" y="400" text-anchor="middle" class="label-sub" font-size="13">with calibrated uncertainty</text>
+  <text x="600" y="420" text-anchor="middle" class="label-sub" font-size="13">and structural provenance.</text>
+  <text x="600" y="455" text-anchor="middle" class="label-sub" font-size="12">Two-stage MedGemma pipeline</text>
+  <text x="600" y="472" text-anchor="middle" class="label-sub" font-size="12">+ pgvector/Tantivy hybrid retrieval</text>
+  <text x="600" y="489" text-anchor="middle" class="label-sub" font-size="12">+ Inspect AI eval harness</text>
+
+  <rect x="920" y="120" width="220" height="100" rx="8" class="external-box"/>
+  <text x="1030" y="155" text-anchor="middle" class="label-white" font-size="14">MoH Kenya</text>
+  <text x="1030" y="175" text-anchor="middle" class="label-sub">[External System]</text>
+  <text x="1030" y="200" text-anchor="middle" class="label-sub">Clinical guidelines PDFs</text>
+
+  <rect x="920" y="260" width="220" height="100" rx="8" class="external-box"/>
+  <text x="1030" y="295" text-anchor="middle" class="label-white" font-size="14">AKU HMIS</text>
+  <text x="1030" y="315" text-anchor="middle" class="label-sub">[External System]</text>
+  <text x="1030" y="340" text-anchor="middle" class="label-sub">De-identified query logs</text>
+
+  <rect x="920" y="400" width="220" height="100" rx="8" class="external-box"/>
+  <text x="1030" y="435" text-anchor="middle" class="label-white" font-size="14">HuggingFace Hub</text>
+  <text x="1030" y="455" text-anchor="middle" class="label-sub">[External System]</text>
+  <text x="1030" y="480" text-anchor="middle" class="label-sub">MedGemma weights</text>
+
+  <rect x="920" y="540" width="220" height="100" rx="8" class="external-box"/>
+  <text x="1030" y="575" text-anchor="middle" class="label-white" font-size="14">PagerDuty / Email</text>
+  <text x="1030" y="595" text-anchor="middle" class="label-sub">[External System]</text>
+  <text x="1030" y="620" text-anchor="middle" class="label-sub">Incident notifications</text>
+
+  <path d="M 280 175 Q 365 175 450 340" class="arrow-line" marker-end="url(#arrow)"/>
+  <text x="320" y="240" class="arrow-label">Asks clinical questions</text>
+  <text x="320" y="256" class="arrow-label">[HTTPS, web UI]</text>
+
+  <path d="M 280 335 L 450 400" class="arrow-line" marker-end="url(#arrow)"/>
+  <text x="290" y="375" class="arrow-label">Grades responses,</text>
+  <text x="290" y="391" class="arrow-label">closes AL loop</text>
+
+  <path d="M 280 495 L 450 460" class="arrow-line" marker-end="url(#arrow)"/>
+  <text x="290" y="470" class="arrow-label">Runs Inspect AI evals</text>
+  <text x="290" y="486" class="arrow-label">[CLI, API]</text>
+
+  <path d="M 280 655 Q 365 655 450 510" class="arrow-line" marker-end="url(#arrow)"/>
+  <text x="290" y="590" class="arrow-label">Deploys, observes</text>
+  <text x="290" y="606" class="arrow-label">[kubectl, Grafana]</text>
+
+  <path d="M 750 340 Q 835 230 920 180" class="arrow-line" marker-end="url(#arrow)"/>
+  <text x="770" y="255" class="arrow-label">Ingests guidelines</text>
+  <text x="770" y="271" class="arrow-label">(manual + scheduled)</text>
+
+  <path d="M 750 380 L 920 310" class="arrow-line" marker-end="url(#arrow)"/>
+  <text x="770" y="345" class="arrow-label">Pulls anonymized</text>
+  <text x="770" y="361" class="arrow-label">retrospective queries</text>
+
+  <path d="M 920 450 L 750 440" class="arrow-line" marker-end="url(#arrow)"/>
+  <text x="770" y="430" class="arrow-label">Model weights</text>
+  <text x="770" y="446" class="arrow-label">(at deploy time)</text>
+
+  <path d="M 750 500 Q 835 540 920 580" class="arrow-line" marker-end="url(#arrow)"/>
+  <text x="770" y="540" class="arrow-label">Alerts on SLO breach</text>
+  <text x="770" y="556" class="arrow-label">or coverage drift</text>
+
+  <rect x="40" y="730" width="20" height="20" class="person-box"/>
+  <text x="68" y="746" font-size="12">Person</text>
+  <rect x="140" y="730" width="20" height="20" class="system-box"/>
+  <text x="168" y="746" font-size="12">Afya Sahihi System</text>
+  <rect x="280" y="730" width="20" height="20" class="external-box"/>
+  <text x="308" y="746" font-size="12">External System</text>
+</svg>

@@ -1,0 +1,38 @@
+[Unit]
+Description=Afya Gemma Afya Sahihi - GitOps systemd watcher
+Documentation=https://github.com/aku/afya-sahihi/blob/main/docs/adr/0005-k3s-over-full-kubernetes.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=afya-sahihi-deploy
+Group=afya-sahihi-deploy
+WorkingDirectory=/srv/afya-sahihi/gitops
+EnvironmentFile=/etc/afya-sahihi/env/systemd-watcher.env
+
+LoadCredential=gitops_key:/etc/afya-sahihi/secrets/gitops-deploy-key
+LoadCredential=kubeconfig:/etc/afya-sahihi/kubeconfig.yaml
+LoadCredential=baremetal_ssh_key:/etc/afya-sahihi/secrets/baremetal-ssh-key
+
+ExecStart=/usr/local/bin/afya-sahihi-watcher run
+ExecReload=/bin/kill -HUP $MAINPID
+
+# The watcher is a long-lived polling loop; a single instance at a time.
+Restart=always
+RestartSec=10
+
+LimitNOFILE=4096
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/srv/afya-sahihi/gitops /var/log/afya-sahihi
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=afya-sahihi-watcher
+
+[Install]
+WantedBy=multi-user.target

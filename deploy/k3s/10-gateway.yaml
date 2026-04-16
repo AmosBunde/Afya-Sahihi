@@ -1,0 +1,355 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-config
+  namespace: afya-sahihi
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: afya-sahihi
+    app.kubernetes.io/managed-by: afya-sahihi-watcher
+data:
+  # Non-secret env. Secrets arrive via SealedSecret named gateway-secrets.
+  SERVICE_NAME: afya-sahihi-gateway
+  SERVICE_PORT: "8080"
+  SERVICE_WORKERS: "4"
+  SERVICE_LOG_LEVEL: info
+  SERVICE_LOG_FORMAT: json
+  ORCHESTRATOR_TIMEOUT_SECONDS: "30"
+  ORCHESTRATOR_MAX_CONCURRENT_PER_WORKER: "16"
+  ORCHESTRATOR_ENABLE_STRICT_REVIEW: "true"
+  ORCHESTRATOR_ENABLE_CONFORMAL: "true"
+  ORCHESTRATOR_FAIL_CLOSED: "true"
+  RETRIEVAL_SERVICE_URL: http://retrieval.afya-sahihi.svc.cluster.local:8081
+  CONFORMAL_SERVICE_URL: http://conformal.afya-sahihi.svc.cluster.local:8082
+  AUDIT_SERVICE_URL: http://audit.afya-sahihi.svc.cluster.local:8083
+  PREFILTER_SERVICE_URL: http://prefilter.afya-sahihi.svc.cluster.local:8084
+  VLLM_27B_BASE_URL: http://afya-sahihi-gpu-01.internal:8000/v1
+  VLLM_27B_MODEL_NAME: medgemma-27b-it
+  VLLM_4B_BASE_URL: http://afya-sahihi-gpu-01.internal:8001/v1
+  VLLM_4B_MODEL_NAME: medgemma-4b-it
+  CORPUS_VERSION: v1.0
+  OTEL_SERVICE_NAME: afya-sahihi-gateway
+  OTEL_SERVICE_NAMESPACE: afya-sahihi
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector.observability.svc.cluster.local:4317
+  OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+  PIPELINE_PREFILTER_THRESHOLD: "0.65"
+  PIPELINE_GENERATION_TEMPERATURE: "0.1"
+  PIPELINE_GENERATION_SEED: "20260416"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  namespace: afya-sahihi
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: afya-sahihi
+    app.kubernetes.io/component: api
+    app.kubernetes.io/managed-by: afya-sahihi-watcher
+spec:
+  replicas: 3
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gateway
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: gateway
+        app.kubernetes.io/part-of: afya-sahihi
+        app.kubernetes.io/component: api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: gateway
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: gateway
+      containers:
+      - name: gateway
+        image: harbor.aku.edu/afya-sahihi/gateway:1.0.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        - name: metrics
+          containerPort: 9090
+          protocol: TCP
+        envFrom:
+        - configMapRef:
+            name: gateway-config
+        - secretRef:
+            name: gateway-secrets
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+          limits:
+            cpu: "2"
+            memory: "4Gi"
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 2
+        startupProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          failureThreshold: 24  # 2 minutes max startup
+        lifecycle:
+          preStop:
+            exec:
+              command: ["/bin/sh", "-c", "sleep 15"]
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: cache
+          mountPath: /app/.cache
+      volumes:
+      - name: tmp
+        emptyDir:
+          sizeLimit: 256Mi
+      - name: cache
+        emptyDir:
+          sizeLimit: 1Gi
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway
+  namespace: afya-sahihi
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: afya-sahihi
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: gateway
+  ports:
+  - name: http
+    port: 8080
+    targetPort: http
+    protocol: TCP
+  - name: metrics
+    port: 9090
+    targetPort: metrics
+    protocol: TCP
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gateway
+  namespace: afya-sahihi
+automountServiceAccountToken: false
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: gateway
+  namespace: afya-sahihi
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gateway
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: gateway
+  namespace: afya-sahihi
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: gateway
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 30
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gateway
+  namespace: afya-sahihi
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: gateway
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: traefik
+    ports:
+    - port: 8080
+      protocol: TCP
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: observability
+    ports:
+    - port: 9090
+      protocol: TCP
+  egress:
+  # DNS
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+    ports:
+    - port: 53
+      protocol: UDP
+    - port: 53
+      protocol: TCP
+  # Internal services
+  - to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/part-of: afya-sahihi
+  # Postgres, Redis, MinIO on data node
+  - to:
+    - ipBlock:
+        cidr: 10.0.0.10/32  # afya-sahihi-data-01.internal
+    ports:
+    - port: 5432
+      protocol: TCP
+    - port: 6379
+      protocol: TCP
+    - port: 9000
+      protocol: TCP
+  # vLLM on GPU node
+  - to:
+    - ipBlock:
+        cidr: 10.0.0.20/32  # afya-sahihi-gpu-01.internal
+    ports:
+    - port: 8000
+      protocol: TCP
+    - port: 8001
+      protocol: TCP
+  # OTel collector
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: observability
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: otel-collector
+    ports:
+    - port: 4317
+      protocol: TCP
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: gateway
+  namespace: afya-sahihi
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: afya-sahihi
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gateway
+  endpoints:
+  - port: metrics
+    interval: 15s
+    path: /metrics
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: gateway
+  namespace: afya-sahihi
+spec:
+  entryPoints:
+  - websecure
+  routes:
+  - match: Host(`afya-sahihi.aku.edu`) && PathPrefix(`/api`)
+    kind: Rule
+    services:
+    - name: gateway
+      port: 8080
+      sticky:
+        cookie:
+          name: hakika_sticky
+          secure: true
+          httpOnly: true
+          sameSite: strict
+    middlewares:
+    - name: oidc-auth
+    - name: rate-limit
+    - name: security-headers
+  tls:
+    secretName: afya-sahihi-aku-edu-tls

@@ -1,0 +1,117 @@
+---
+version: 2
+
+updates:
+  # Python backend
+  - package-ecosystem: pip
+    directory: "/backend"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Africa/Nairobi"
+    open-pull-requests-limit: 5
+    labels:
+      - "area/backend"
+      - "type/chore"
+      - "needs-adr"
+    reviewers:
+      - AmosBunde
+    groups:
+      security-updates:
+        applies-to: security-updates
+        patterns: ["*"]
+      minor-and-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
+    ignore:
+      # vLLM is pinned for H100 stability - upgrades require planned maintenance
+      - dependency-name: "vllm"
+      # Pydantic v2 API is stable, only accept patch updates
+      - dependency-name: "pydantic"
+        update-types: ["version-update:semver-major"]
+
+  # Frontend
+  - package-ecosystem: npm
+    directory: "/frontend"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Africa/Nairobi"
+    open-pull-requests-limit: 5
+    labels:
+      - "area/frontend"
+      - "type/chore"
+    reviewers:
+      - AmosBunde
+    groups:
+      security-updates:
+        applies-to: security-updates
+        patterns: ["*"]
+      minor-and-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
+
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    labels:
+      - "area/ci"
+      - "type/chore"
+
+  # Labeling UI (Streamlit)
+  - package-ecosystem: pip
+    directory: "/labeling"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    labels:
+      - "area/labeling-ui"
+      - "type/chore"
+
+  # Eval harness
+  - package-ecosystem: pip
+    directory: "/eval"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    labels:
+      - "area/eval"
+      - "type/chore"
+    ignore:
+      # Inspect AI is pinned for reproducibility of eval results
+      - dependency-name: "inspect-ai"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+
+  # Docker base images for each service
+  - package-ecosystem: docker
+    directory: "/backend"
+    schedule:
+      interval: weekly
+    labels:
+      - "area/deploy"
+      - "type/chore"
+      - "touches-security"
+  - package-ecosystem: docker
+    directory: "/frontend"
+    schedule:
+      interval: weekly
+    labels:
+      - "area/deploy"
+      - "type/chore"
+      - "touches-security"
+  - package-ecosystem: docker
+    directory: "/labeling"
+    schedule:
+      interval: weekly
+    labels:
+      - "area/deploy"
+      - "type/chore"
+      - "touches-security"

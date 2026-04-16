@@ -1,0 +1,46 @@
+---
+name: ADR proposal
+description: Propose a new architectural decision
+title: "[adr] "
+labels: ["type/adr"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        An ADR captures a decision. Open this issue first to discuss the decision.
+        Once we agree, file a PR adding the ADR file under `docs/adr/NNNN-title.md`.
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What forces are at play? What have we observed that makes a decision necessary now?
+    validations:
+      required: true
+
+  - type: textarea
+    id: decision
+    attributes:
+      label: Proposed decision
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Minimum two. Say why each was rejected.
+    validations:
+      required: true
+
+  - type: textarea
+    id: consequences
+    attributes:
+      label: Consequences (positive, negative, neutral)
+    validations:
+      required: true
+
+  - type: input
+    id: supersedes
+    attributes:
+      label: Supersedes (ADR ID, if any)

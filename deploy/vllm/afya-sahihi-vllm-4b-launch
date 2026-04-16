@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# =====================================================================
+# afya-sahihi-vllm-4b-launch
+# Launcher for the MedGemma 4B vLLM server on afya-sahihi-gpu-01.
+# Serves the pre-filter classifier role. The 27B server loads this same
+# model separately for speculative decoding (see afya-sahihi-vllm-27b-launch).
+# =====================================================================
+
+set -euo pipefail
+
+HF_TOKEN="$(cat "${CREDENTIALS_DIRECTORY}/hf_token")"
+VLLM_API_KEY="$(cat "${CREDENTIALS_DIRECTORY}/api_key")"
+export HF_TOKEN
+
+mkdir -p "${HF_HOME}" "${VLLM_CACHE_ROOT}" "${VLLM_DOWNLOAD_DIR}"
+
+if ! nvidia-smi --query-gpu=name --format=csv,noheader >/dev/null 2>&1; then
+  echo "FATAL: no GPU visible to this process" >&2
+  exit 1
+fi
+
+# Wait for 27B to be up first (it reserves its GPU slice)
+TIMEOUT=180
+START=$(date +%s)
+while ! curl -sf -o /dev/null "http://127.0.0.1:8000/health"; do
+  if [[ $(($(date +%s) - START)) -gt $TIMEOUT ]]; then
+    echo "FATAL: 27B did not become healthy within ${TIMEOUT}s" >&2
+    exit 1
+  fi
+  sleep 2
+done
+
+ARGS=(
+  --model "${VLLM_MODEL}"
+  --served-model-name "${VLLM_SERVED_MODEL_NAME}"
+  --download-dir "${VLLM_DOWNLOAD_DIR}"
+  --host "${VLLM_HOST}"
+  --port "${VLLM_PORT}"
+  --gpu-memory-utilization "${VLLM_GPU_MEMORY_UTILIZATION}"
+  --tensor-parallel-size "${VLLM_TENSOR_PARALLEL_SIZE}"
+  --pipeline-parallel-size "${VLLM_PIPELINE_PARALLEL_SIZE}"
+  --max-num-seqs "${VLLM_MAX_NUM_SEQS}"
+  --max-num-batched-tokens "${VLLM_MAX_NUM_BATCHED_TOKENS}"
+  --max-model-len "${VLLM_MAX_MODEL_LEN}"
+  --uvicorn-log-level "${VLLM_UVICORN_LOG_LEVEL}"
+  --api-key "${VLLM_API_KEY}"
+)
+
+# LoRA adapters for the pre-filter classifier head
+if [[ "${VLLM_ENABLE_LORA}" == "true" ]]; then
+  ARGS+=(
+    --enable-lora
+    --max-loras "${VLLM_MAX_LORAS}"
+    --max-lora-rank "${VLLM_MAX_LORA_RANK}"
+  )
+  # Parse comma-separated module list
+  IFS=',' read -ra MODULES <<< "${VLLM_LORA_MODULES}"
+  for module in "${MODULES[@]}"; do
+    ARGS+=(--lora-modules "${module}")
+  done
+fi
+
+if [[ "${VLLM_ENABLE_PREFIX_CACHING}" == "true" ]]; then
+  ARGS+=(--enable-prefix-caching)
+fi
+
+if [[ "${VLLM_TRUST_REMOTE_CODE}" == "true" ]]; then
+  ARGS+=(--trust-remote-code)
+fi
+
+if [[ "${VLLM_ENABLE_LOG_PROBS}" == "true" ]]; then
+  ARGS+=(--max-logprobs "${VLLM_MAX_LOG_PROBS}")
+fi
+
+export OTEL_SERVICE_NAME OTEL_EXPORTER_OTLP_ENDPOINT OTEL_RESOURCE_ATTRIBUTES
+
+echo "Launching vLLM 4B with args: ${ARGS[*]}"
+exec /usr/local/bin/vllm serve "${ARGS[@]}"

@@ -1,0 +1,285 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1200" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#555"/>
+    </marker>
+    <style>
+      .container { fill: #438DD5; stroke: #2E6295; stroke-width: 2; }
+      .datastore { fill: #2E7D5A; stroke: #1E5D40; stroke-width: 2; }
+      .llm-box { fill: #A63D2A; stroke: #7A2D1E; stroke-width: 2; }
+      .obs-box { fill: #6B46C1; stroke: #4C2F8A; stroke-width: 2; }
+      .external-box { fill: #999999; stroke: #6B6B6B; stroke-width: 2; }
+      .person-box { fill: #08427B; stroke: #073B6F; stroke-width: 2; }
+      .label-white { fill: white; font-weight: bold; }
+      .label-sub { fill: #f0f0f0; font-size: 10px; }
+      .label-tech { fill: #cce; font-size: 9px; font-style: italic; }
+      .arrow-line { stroke: #555; stroke-width: 1.2; fill: none; }
+      .arrow-label { fill: #333; font-size: 10px; }
+      .boundary { fill: none; stroke: #888; stroke-width: 1.5; stroke-dasharray: 8,4; }
+      .boundary-label { fill: #555; font-size: 12px; font-weight: bold; }
+      .title { font-size: 22px; font-weight: bold; fill: #111; }
+      .subtitle { font-size: 12px; fill: #555; }
+    </style>
+  </defs>
+
+  <text x="40" y="35" class="title">Afya Sahihi — C4 Level 2: Containers</text>
+  <text x="40" y="55" class="subtitle">All deployable units, their responsibilities, and how they communicate. Everything self-hosted on-prem at AKU Nairobi except HF Hub.</text>
+
+  <rect x="40" y="100" width="140" height="70" rx="6" class="person-box"/>
+  <text x="110" y="130" text-anchor="middle" class="label-white" font-size="12">Clinician</text>
+  <text x="110" y="150" text-anchor="middle" class="label-sub">Web browser</text>
+
+  <rect x="40" y="200" width="140" height="70" rx="6" class="person-box"/>
+  <text x="110" y="230" text-anchor="middle" class="label-white" font-size="12">Reviewer</text>
+  <text x="110" y="250" text-anchor="middle" class="label-sub">Labeling UI</text>
+
+  <rect x="40" y="300" width="140" height="70" rx="6" class="person-box"/>
+  <text x="110" y="330" text-anchor="middle" class="label-white" font-size="12">SRE</text>
+  <text x="110" y="350" text-anchor="middle" class="label-sub">kubectl / Grafana</text>
+
+  <rect x="40" y="400" width="140" height="70" rx="6" class="person-box"/>
+  <text x="110" y="430" text-anchor="middle" class="label-white" font-size="12">Researcher</text>
+  <text x="110" y="450" text-anchor="middle" class="label-sub">Inspect AI CLI</text>
+
+  <rect x="220" y="90" width="180" height="420" class="boundary"/>
+  <text x="310" y="82" text-anchor="middle" class="boundary-label">Edge (k3s ingress node)</text>
+
+  <rect x="240" y="120" width="140" height="90" rx="6" class="container"/>
+  <text x="310" y="145" text-anchor="middle" class="label-white" font-size="12">Traefik</text>
+  <text x="310" y="162" text-anchor="middle" class="label-sub">[Ingress]</text>
+  <text x="310" y="180" text-anchor="middle" class="label-tech">TLS termination,</text>
+  <text x="310" y="192" text-anchor="middle" class="label-tech">rate limit, auth</text>
+
+  <rect x="240" y="240" width="140" height="90" rx="6" class="container"/>
+  <text x="310" y="265" text-anchor="middle" class="label-white" font-size="12">Frontend</text>
+  <text x="310" y="282" text-anchor="middle" class="label-sub">[React 19 + Vite]</text>
+  <text x="310" y="300" text-anchor="middle" class="label-tech">TypeScript, Tanstack</text>
+  <text x="310" y="312" text-anchor="middle" class="label-tech">Query, nginx static</text>
+
+  <rect x="240" y="360" width="140" height="90" rx="6" class="container"/>
+  <text x="310" y="385" text-anchor="middle" class="label-white" font-size="12">Labeling UI</text>
+  <text x="310" y="402" text-anchor="middle" class="label-sub">[Streamlit]</text>
+  <text x="310" y="420" text-anchor="middle" class="label-tech">Reviewer grading,</text>
+  <text x="310" y="432" text-anchor="middle" class="label-tech">provenance inspector</text>
+
+  <rect x="440" y="90" width="520" height="420" class="boundary"/>
+  <text x="700" y="82" text-anchor="middle" class="boundary-label">Application Services (k3s workload nodes, CPU)</text>
+
+  <rect x="460" y="120" width="160" height="90" rx="6" class="container"/>
+  <text x="540" y="145" text-anchor="middle" class="label-white" font-size="12">Gateway API</text>
+  <text x="540" y="162" text-anchor="middle" class="label-sub">[FastAPI + asyncpg]</text>
+  <text x="540" y="180" text-anchor="middle" class="label-tech">Auth, pipeline</text>
+  <text x="540" y="192" text-anchor="middle" class="label-tech">orchestration, audit</text>
+
+  <rect x="640" y="120" width="160" height="90" rx="6" class="container"/>
+  <text x="720" y="145" text-anchor="middle" class="label-white" font-size="12">Retrieval Service</text>
+  <text x="720" y="162" text-anchor="middle" class="label-sub">[FastAPI]</text>
+  <text x="720" y="180" text-anchor="middle" class="label-tech">Hybrid dense/BM25,</text>
+  <text x="720" y="192" text-anchor="middle" class="label-tech">reranking, provenance</text>
+
+  <rect x="820" y="120" width="120" height="90" rx="6" class="container"/>
+  <text x="880" y="145" text-anchor="middle" class="label-white" font-size="12">Conformal</text>
+  <text x="880" y="160" text-anchor="middle" class="label-white" font-size="12">Service</text>
+  <text x="880" y="178" text-anchor="middle" class="label-sub">[FastAPI]</text>
+  <text x="880" y="195" text-anchor="middle" class="label-tech">Set construction,</text>
+  <text x="880" y="206" text-anchor="middle" class="label-tech">coverage monitor</text>
+
+  <rect x="460" y="240" width="160" height="90" rx="6" class="container"/>
+  <text x="540" y="265" text-anchor="middle" class="label-white" font-size="12">Ingestion Worker</text>
+  <text x="540" y="282" text-anchor="middle" class="label-sub">[Python + Docling]</text>
+  <text x="540" y="300" text-anchor="middle" class="label-tech">PDF parsing, structural</text>
+  <text x="540" y="312" text-anchor="middle" class="label-tech">metadata extraction</text>
+
+  <rect x="640" y="240" width="160" height="90" rx="6" class="container"/>
+  <text x="720" y="265" text-anchor="middle" class="label-white" font-size="12">Embedding Worker</text>
+  <text x="720" y="282" text-anchor="middle" class="label-sub">[Python + BGE-M3]</text>
+  <text x="720" y="300" text-anchor="middle" class="label-tech">Chunk embedding,</text>
+  <text x="720" y="312" text-anchor="middle" class="label-tech">batch indexing</text>
+
+  <rect x="820" y="240" width="120" height="90" rx="6" class="container"/>
+  <text x="880" y="265" text-anchor="middle" class="label-white" font-size="12">Active Learning</text>
+  <text x="880" y="280" text-anchor="middle" class="label-white" font-size="12">Scheduler</text>
+  <text x="880" y="298" text-anchor="middle" class="label-sub">[APScheduler]</text>
+  <text x="880" y="315" text-anchor="middle" class="label-tech">Query acquisition</text>
+
+  <rect x="460" y="360" width="160" height="90" rx="6" class="container"/>
+  <text x="540" y="385" text-anchor="middle" class="label-white" font-size="12">Inspect AI Runner</text>
+  <text x="540" y="402" text-anchor="middle" class="label-sub">[Python job]</text>
+  <text x="540" y="420" text-anchor="middle" class="label-tech">3-tier eval harness,</text>
+  <text x="540" y="432" text-anchor="middle" class="label-tech">unit / regression / human</text>
+
+  <rect x="640" y="360" width="160" height="90" rx="6" class="container"/>
+  <text x="720" y="385" text-anchor="middle" class="label-white" font-size="12">Training Pipeline</text>
+  <text x="720" y="402" text-anchor="middle" class="label-sub">[Unsloth + TRL]</text>
+  <text x="720" y="420" text-anchor="middle" class="label-tech">GRPO fine-tuning,</text>
+  <text x="720" y="432" text-anchor="middle" class="label-tech">offline on GPU node</text>
+
+  <rect x="820" y="360" width="120" height="90" rx="6" class="container"/>
+  <text x="880" y="385" text-anchor="middle" class="label-white" font-size="12">Audit Service</text>
+  <text x="880" y="402" text-anchor="middle" class="label-sub">[FastAPI]</text>
+  <text x="880" y="420" text-anchor="middle" class="label-tech">Immutable logs,</text>
+  <text x="880" y="432" text-anchor="middle" class="label-tech">IRB-compliant</text>
+
+  <rect x="1000" y="90" width="280" height="300" class="boundary"/>
+  <text x="1140" y="82" text-anchor="middle" class="boundary-label">LLM Serving (H100 GPU node, bare metal)</text>
+
+  <rect x="1020" y="120" width="240" height="120" rx="6" class="llm-box"/>
+  <text x="1140" y="150" text-anchor="middle" class="label-white" font-size="13">vLLM: MedGemma 27B</text>
+  <text x="1140" y="170" text-anchor="middle" class="label-sub">[vLLM + CUDA]</text>
+  <text x="1140" y="190" text-anchor="middle" class="label-tech">Primary generator,</text>
+  <text x="1140" y="205" text-anchor="middle" class="label-tech">FP8, tensor-parallel=1,</text>
+  <text x="1140" y="220" text-anchor="middle" class="label-tech">prefix cache, speculative</text>
+
+  <rect x="1020" y="260" width="240" height="110" rx="6" class="llm-box"/>
+  <text x="1140" y="290" text-anchor="middle" class="label-white" font-size="13">vLLM: MedGemma 4B</text>
+  <text x="1140" y="310" text-anchor="middle" class="label-sub">[vLLM + CUDA]</text>
+  <text x="1140" y="330" text-anchor="middle" class="label-tech">Pre-filter classifier head</text>
+  <text x="1140" y="345" text-anchor="middle" class="label-tech">+ re-ranker role,</text>
+  <text x="1140" y="360" text-anchor="middle" class="label-tech">BF16, shared GPU</text>
+
+  <rect x="1000" y="410" width="280" height="280" class="boundary"/>
+  <text x="1140" y="402" text-anchor="middle" class="boundary-label">Data (dedicated storage node)</text>
+
+  <rect x="1020" y="430" width="240" height="120" rx="6" class="datastore"/>
+  <text x="1140" y="460" text-anchor="middle" class="label-white" font-size="13">Postgres 16</text>
+  <text x="1140" y="480" text-anchor="middle" class="label-sub">[Database, asyncpg]</text>
+  <text x="1140" y="498" text-anchor="middle" class="label-tech">pgvector for dense,</text>
+  <text x="1140" y="512" text-anchor="middle" class="label-tech">Tantivy-via-pg for BM25,</text>
+  <text x="1140" y="526" text-anchor="middle" class="label-tech">structural metadata JSONB,</text>
+  <text x="1140" y="540" text-anchor="middle" class="label-tech">eval + audit + app state</text>
+
+  <rect x="1020" y="570" width="115" height="100" rx="6" class="datastore"/>
+  <text x="1077" y="598" text-anchor="middle" class="label-white" font-size="12">MinIO</text>
+  <text x="1077" y="615" text-anchor="middle" class="label-sub">[S3-compat]</text>
+  <text x="1077" y="633" text-anchor="middle" class="label-tech">Source PDFs,</text>
+  <text x="1077" y="645" text-anchor="middle" class="label-tech">artifacts,</text>
+  <text x="1077" y="657" text-anchor="middle" class="label-tech">model weights</text>
+
+  <rect x="1145" y="570" width="115" height="100" rx="6" class="datastore"/>
+  <text x="1202" y="598" text-anchor="middle" class="label-white" font-size="12">Redis</text>
+  <text x="1202" y="615" text-anchor="middle" class="label-sub">[Cache/queue]</text>
+  <text x="1202" y="633" text-anchor="middle" class="label-tech">Rate limit,</text>
+  <text x="1202" y="645" text-anchor="middle" class="label-tech">job queue,</text>
+  <text x="1202" y="657" text-anchor="middle" class="label-tech">session cache</text>
+
+  <rect x="440" y="540" width="520" height="240" class="boundary"/>
+  <text x="700" y="532" text-anchor="middle" class="boundary-label">Observability Stack</text>
+
+  <rect x="460" y="560" width="150" height="90" rx="6" class="obs-box"/>
+  <text x="535" y="585" text-anchor="middle" class="label-white" font-size="12">OTel Collector</text>
+  <text x="535" y="602" text-anchor="middle" class="label-sub">[DaemonSet]</text>
+  <text x="535" y="620" text-anchor="middle" class="label-tech">Traces, metrics,</text>
+  <text x="535" y="632" text-anchor="middle" class="label-tech">logs fan-out</text>
+
+  <rect x="630" y="560" width="150" height="90" rx="6" class="obs-box"/>
+  <text x="705" y="585" text-anchor="middle" class="label-white" font-size="12">Grafana Tempo</text>
+  <text x="705" y="602" text-anchor="middle" class="label-sub">[Traces]</text>
+  <text x="705" y="620" text-anchor="middle" class="label-tech">Distributed tracing,</text>
+  <text x="705" y="632" text-anchor="middle" class="label-tech">S3-backed storage</text>
+
+  <rect x="800" y="560" width="150" height="90" rx="6" class="obs-box"/>
+  <text x="875" y="585" text-anchor="middle" class="label-white" font-size="12">Arize Phoenix</text>
+  <text x="875" y="602" text-anchor="middle" class="label-sub">[LLM obs]</text>
+  <text x="875" y="620" text-anchor="middle" class="label-tech">Token-level spans,</text>
+  <text x="875" y="632" text-anchor="middle" class="label-tech">retrieval debug</text>
+
+  <rect x="460" y="670" width="150" height="90" rx="6" class="obs-box"/>
+  <text x="535" y="695" text-anchor="middle" class="label-white" font-size="12">Prometheus</text>
+  <text x="535" y="712" text-anchor="middle" class="label-sub">[Metrics]</text>
+  <text x="535" y="730" text-anchor="middle" class="label-tech">Scrape exporters,</text>
+  <text x="535" y="742" text-anchor="middle" class="label-tech">alertmanager</text>
+
+  <rect x="630" y="670" width="150" height="90" rx="6" class="obs-box"/>
+  <text x="705" y="695" text-anchor="middle" class="label-white" font-size="12">Loki</text>
+  <text x="705" y="712" text-anchor="middle" class="label-sub">[Logs]</text>
+  <text x="705" y="730" text-anchor="middle" class="label-tech">Structured JSON,</text>
+  <text x="705" y="742" text-anchor="middle" class="label-tech">Promtail shipper</text>
+
+  <rect x="800" y="670" width="150" height="90" rx="6" class="obs-box"/>
+  <text x="875" y="695" text-anchor="middle" class="label-white" font-size="12">Grafana</text>
+  <text x="875" y="712" text-anchor="middle" class="label-sub">[Dashboards]</text>
+  <text x="875" y="730" text-anchor="middle" class="label-tech">Unified view,</text>
+  <text x="875" y="742" text-anchor="middle" class="label-tech">on-call alerts</text>
+
+  <rect x="40" y="540" width="380" height="240" class="boundary"/>
+  <text x="230" y="532" text-anchor="middle" class="boundary-label">Deploy / GitOps</text>
+
+  <rect x="60" y="560" width="160" height="90" rx="6" class="container"/>
+  <text x="140" y="585" text-anchor="middle" class="label-white" font-size="12">systemd Watcher</text>
+  <text x="140" y="602" text-anchor="middle" class="label-sub">[Polling daemon]</text>
+  <text x="140" y="620" text-anchor="middle" class="label-tech">Git pull, image pull,</text>
+  <text x="140" y="632" text-anchor="middle" class="label-tech">k3s apply on diff</text>
+
+  <rect x="240" y="560" width="160" height="90" rx="6" class="container"/>
+  <text x="320" y="585" text-anchor="middle" class="label-white" font-size="12">GitHub Actions</text>
+  <text x="320" y="602" text-anchor="middle" class="label-sub">[CI]</text>
+  <text x="320" y="620" text-anchor="middle" class="label-tech">Build, test, push</text>
+  <text x="320" y="632" text-anchor="middle" class="label-tech">to container registry</text>
+
+  <rect x="60" y="670" width="160" height="90" rx="6" class="container"/>
+  <text x="140" y="695" text-anchor="middle" class="label-white" font-size="12">Harbor Registry</text>
+  <text x="140" y="712" text-anchor="middle" class="label-sub">[Container registry]</text>
+  <text x="140" y="730" text-anchor="middle" class="label-tech">Signed images,</text>
+  <text x="140" y="742" text-anchor="middle" class="label-tech">vuln scan</text>
+
+  <rect x="240" y="670" width="160" height="90" rx="6" class="container"/>
+  <text x="320" y="695" text-anchor="middle" class="label-white" font-size="12">Sealed Secrets</text>
+  <text x="320" y="712" text-anchor="middle" class="label-sub">[k8s controller]</text>
+  <text x="320" y="730" text-anchor="middle" class="label-tech">Encrypted secrets</text>
+  <text x="320" y="742" text-anchor="middle" class="label-tech">in git, decrypted in cluster</text>
+
+  <rect x="1320" y="120" width="240" height="90" rx="6" class="external-box"/>
+  <text x="1440" y="150" text-anchor="middle" class="label-white" font-size="12">HuggingFace Hub</text>
+  <text x="1440" y="170" text-anchor="middle" class="label-sub">[External]</text>
+  <text x="1440" y="190" text-anchor="middle" class="label-tech">MedGemma weights,</text>
+  <text x="1440" y="202" text-anchor="middle" class="label-tech">gated via HF_TOKEN</text>
+
+  <rect x="1320" y="240" width="240" height="90" rx="6" class="external-box"/>
+  <text x="1440" y="270" text-anchor="middle" class="label-white" font-size="12">GitHub</text>
+  <text x="1440" y="290" text-anchor="middle" class="label-sub">[External]</text>
+  <text x="1440" y="310" text-anchor="middle" class="label-tech">GitOps source of</text>
+  <text x="1440" y="322" text-anchor="middle" class="label-tech">truth, CI runners</text>
+
+  <path d="M 180 135 L 240 155" class="arrow-line" marker-end="url(#arrow)"/>
+  <path d="M 180 235 L 240 275" class="arrow-line" marker-end="url(#arrow)"/>
+  <path d="M 380 165 L 460 165" class="arrow-line" marker-end="url(#arrow)"/>
+  <path d="M 380 275 L 460 275" class="arrow-line" marker-end="url(#arrow)"/>
+  <text x="395" y="160" class="arrow-label">HTTPS</text>
+
+  <path d="M 620 165 L 640 165" class="arrow-line" marker-end="url(#arrow)"/>
+  <path d="M 800 165 L 820 165" class="arrow-line" marker-end="url(#arrow)"/>
+  <path d="M 540 210 L 540 240" class="arrow-line" marker-end="url(#arrow)"/>
+  <path d="M 620 400 L 640 400" class="arrow-line" marker-end="url(#arrow)"/>
+
+  <path d="M 940 165 L 1020 175" class="arrow-line" marker-end="url(#arrow)"/>
+  <path d="M 940 195 L 1020 310" class="arrow-line" marker-end="url(#arrow)"/>
+  <text x="950" y="200" class="arrow-label">OpenAI-compat</text>
+  <text x="950" y="215" class="arrow-label">HTTP/JSON</text>
+
+  <path d="M 940 275 L 1020 475" class="arrow-line" marker-end="url(#arrow)"/>
+  <text x="955" y="380" class="arrow-label">asyncpg</text>
+
+  <path d="M 1320 175 L 1260 175" class="arrow-line" marker-end="url(#arrow)"/>
+
+  <path d="M 1320 285 Q 700 285 400 605" class="arrow-line" marker-end="url(#arrow)"/>
+
+  <path d="M 540 330 L 540 560" class="arrow-line" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+  <path d="M 720 330 L 600 560" class="arrow-line" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+  <text x="545" y="450" class="arrow-label">OTLP</text>
+
+  <g transform="translate(1020, 1040)">
+    <text x="0" y="0" font-size="13" font-weight="bold">Legend</text>
+    <rect x="0" y="15" width="16" height="16" class="container"/>
+    <text x="22" y="28" font-size="11">Application container</text>
+    <rect x="0" y="38" width="16" height="16" class="datastore"/>
+    <text x="22" y="51" font-size="11">Data store</text>
+    <rect x="0" y="61" width="16" height="16" class="llm-box"/>
+    <text x="22" y="74" font-size="11">LLM serving (GPU)</text>
+    <rect x="170" y="15" width="16" height="16" class="obs-box"/>
+    <text x="192" y="28" font-size="11">Observability</text>
+    <rect x="170" y="38" width="16" height="16" class="person-box"/>
+    <text x="192" y="51" font-size="11">Person</text>
+    <rect x="170" y="61" width="16" height="16" class="external-box"/>
+    <text x="192" y="74" font-size="11">External</text>
+  </g>
+</svg>

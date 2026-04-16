@@ -1,0 +1,47 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: afya-sahihi
+  labels:
+    app.kubernetes.io/managed-by: afya-sahihi-watcher
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability
+  labels:
+    app.kubernetes.io/managed-by: afya-sahihi-watcher
+---
+# Default deny-all network policy. Per-service NetworkPolicies open specific paths.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: afya-sahihi
+  labels:
+    app.kubernetes.io/managed-by: afya-sahihi-watcher
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+---
+# Resource quota to prevent runaway workloads
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: afya-sahihi-quota
+  namespace: afya-sahihi
+spec:
+  hard:
+    requests.cpu: "40"
+    requests.memory: 120Gi
+    limits.cpu: "80"
+    limits.memory: 200Gi
+    persistentvolumeclaims: "10"
+    count/deployments.apps: "20"
+    count/services: "20"
