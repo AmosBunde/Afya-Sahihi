@@ -63,6 +63,18 @@ updates:
     labels:
       - "area/ci"
       - "type/chore"
+    groups:
+      # Batch action-version bumps so we do not get one PR per action
+      # (three sat open for seven hours before this grouping landed).
+      security-updates:
+        applies-to: security-updates
+        patterns: ["*"]
+      minor-and-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
+      major:
+        applies-to: version-updates
+        update-types: ["major"]
 
   # Labeling UI (Streamlit)
   - package-ecosystem: pip
