@@ -20,6 +20,26 @@
 /eval/                              @AmosBunde
 /labeling/                          @AmosBunde
 
+# PHI-adjacent paths — scrubber, validation, audit trail. Any diff
+# here is reviewed by the security owner first; downstream effects
+# include ADR-0002 (audit hash chain) and SKILL.md §0.4.
+/backend/app/validation/            @AmosBunde
+/backend/audit/                     @AmosBunde
+
+# Request-path services. Latency regressions and silent failures here
+# translate to clinical errors; treat as carefully as the orchestrator.
+/backend/retrieval/                 @AmosBunde
+/backend/app/api/                   @AmosBunde
+/backend/app/clients/               @AmosBunde
+
+# Ingestion determines chunk quality, which bounds retrieval ceiling.
+# See ADR-0004.
+/backend/ingestion/                 @AmosBunde
+
+# Observability config is load-bearing for on-call. Span/metric
+# schema changes are hard to reverse once dashboards depend on them.
+/backend/app/observability/         @AmosBunde
+
 # Security-impacting paths
 /.github/workflows/                 @AmosBunde
 /.pre-commit-config.yaml            @AmosBunde
@@ -28,3 +48,7 @@
 
 # Data layer (migrations and schema)
 /backend/alembic/                   @AmosBunde
+
+# Engineering constitution. Changes require an ADR per both skills'
+# "changes to this skill require an ADR" footer.
+/skills/                            @AmosBunde
