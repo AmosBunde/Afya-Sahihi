@@ -67,13 +67,19 @@ jobs:
             p/fastapi
             p/secrets
       - name: Bandit
+        # Only run when there is Python backend code to scan; otherwise bandit
+        # has nothing to configure itself from (pyproject.toml) and the SARIF
+        # upload below fails on a missing file.
+        if: hashFiles('backend/pyproject.toml') != ''
         run: |
           pip install 'bandit[toml]'
-          bandit -c pyproject.toml -r backend/ -f sarif -o bandit.sarif || true
-      - uses: github/codeql-action/upload-sarif@v3
-        if: always()
+          bandit -c backend/pyproject.toml -r backend/ -f sarif -o bandit.sarif || true
+      - name: Upload Bandit SARIF
+        if: hashFiles('bandit.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: bandit.sarif
+          category: bandit
       - name: CodeQL init
         uses: github/codeql-action/init@v3
         with:
@@ -90,10 +96,19 @@ jobs:
         with:
           python-version: "3.12"
       - name: pip-audit
+        # Skip until the backend dep manifest exists (it ships with issue #11
+        # and the backend scaffold). A hard failure on a missing file gives
+        # every PR today a red check with no actionable signal.
+        if: hashFiles('backend/requirements.txt') != '' || hashFiles('backend/pyproject.toml') != ''
         run: |
           pip install pip-audit
-          pip-audit --strict -r backend/requirements.txt
+          if [ -f backend/requirements.txt ]; then
+            pip-audit --strict -r backend/requirements.txt
+          else
+            pip-audit --strict --pyproject backend/pyproject.toml
+          fi
       - name: npm audit
+        if: hashFiles('frontend/package-lock.json') != ''
         run: |
           cd frontend
           npm ci --omit=dev
@@ -102,6 +117,11 @@ jobs:
   backend-tests:
     name: Backend unit + integration
     runs-on: ubuntu-latest
+    # Whole job is a no-op until the backend scaffold lands. Until then it
+    # would fail on `uv sync` and give every PR a red check. The `if` here
+    # is on the job, not a step, so GitHub records it as "skipped" which
+    # branch protection treats as success for an optional check.
+    if: hashFiles('backend/pyproject.toml') != ''
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -152,6 +172,7 @@ jobs:
     name: Tier 1 evals (Inspect AI)
     runs-on: ubuntu-latest
     needs: backend-tests
+    if: hashFiles('eval/tier1/golden_set.py') != ''
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -175,6 +196,8 @@ jobs:
   frontend-tests:
     name: Frontend lint + typecheck + tests
     runs-on: ubuntu-latest
+    # Skipped until the React UI lands (issue #35).
+    if: hashFiles('frontend/package-lock.json') != ''
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -191,7 +214,10 @@ jobs:
     name: Container build + vulnerability scan
     runs-on: ubuntu-latest
     needs: [hygiene, backend-tests, frontend-tests]
-    if: github.event_name == 'push'
+    # Only run on push (post-merge) AND only once the Dockerfiles exist.
+    if: >-
+      github.event_name == 'push'
+      && (hashFiles('backend/Dockerfile') != '' || hashFiles('frontend/Dockerfile') != '')
     strategy:
       matrix:
         service: [gateway, retrieval, conformal, audit, frontend]

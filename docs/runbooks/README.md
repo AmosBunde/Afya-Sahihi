@@ -10,6 +10,7 @@ all you need.
 | Runbook | Purpose |
 |---------|---------|
 | [bootstrap.md](./bootstrap.md) | First-time cluster bootstrap from bare metal to first green canary |
+| [ci-branch-protection.md](./ci-branch-protection.md) | Configure CI branch protection and Codecov integration |
 
 ## Authoring guidelines
 
