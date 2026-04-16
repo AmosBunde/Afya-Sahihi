@@ -172,6 +172,9 @@ openapi.yaml
 # Issue grinder prompt (internal tooling, not committed)
 scripts/issue_grinder_prompt.sh
 
+# Claude Code session state (per-user, never committed)
+.claude/
+
 # Local automation scripts (keep hook scripts tracked, ignore everything else)
 scripts/*.sh
 !scripts/hooks/*.sh
