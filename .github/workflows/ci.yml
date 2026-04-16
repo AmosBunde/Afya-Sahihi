@@ -77,6 +77,7 @@ jobs:
   sast:
     name: SAST (Semgrep + Bandit + CodeQL)
     runs-on: ubuntu-latest
+    needs: preflight
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -106,11 +107,18 @@ jobs:
         with:
           sarif_file: bandit.sarif
           category: bandit
+      # CodeQL needs at least one Python or JS source file to finalize its
+      # database; pre-backend/pre-frontend repos error at the `finalize` step
+      # with "detected code written in GitHub Actions, but not any written
+      # in Python." Gate on the preflight outputs so CodeQL only runs once
+      # there is source for it to analyze.
       - name: CodeQL init
+        if: needs.preflight.outputs.has_backend == 'true' || needs.preflight.outputs.has_frontend == 'true'
         uses: github/codeql-action/init@v3
         with:
           languages: python, javascript
       - name: CodeQL analyze
+        if: needs.preflight.outputs.has_backend == 'true' || needs.preflight.outputs.has_frontend == 'true'
         uses: github/codeql-action/analyze@v3
 
   deps:
@@ -282,8 +290,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: kubeconform
+        # Pin kubeconform — the `/releases/latest/download/` URL was
+        # resolving to a version without sprig, causing the schema-location
+        # template to fail with `function "lower" not defined`. v0.6.7
+        # bundles sprig (added in v0.6.4) so `| lower` works.
         run: |
-          curl -sL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar xz
+          KUBECONFORM_VERSION=v0.6.7
+          curl -sL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" | tar xz
           ./kubeconform -strict -schema-location default -schema-location \
             'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{ .Group }}/{{ .ResourceKind | lower }}_{{ .ResourceAPIVersion }}.json' \
             deploy/k3s/
