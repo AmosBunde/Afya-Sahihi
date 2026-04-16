@@ -124,7 +124,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@v7
       - name: Install deps
         run: |
           cd backend
@@ -154,7 +154,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@v7
       - name: Run Tier 1 evals
         env:
           INSPECT_MODEL_URL: ${{ secrets.INSPECT_MODEL_URL }}
