@@ -133,6 +133,10 @@ def test_downgrade_then_upgrade_is_idempotent(
             """
             SELECT tablename FROM pg_tables
             WHERE schemaname = 'public'
+              -- Exclude tables that belong to Alembic's own bookkeeping
+              -- and to extensions the image ships with by default
+              -- (ParadeDB bundles PostGIS, which creates spatial_ref_sys).
+              AND tablename NOT IN ('alembic_version', 'spatial_ref_sys')
             """
         )
         assert not cur.fetchall(), "downgrade left tables behind"
