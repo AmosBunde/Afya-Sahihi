@@ -25,16 +25,11 @@ cd Afya-Sahihi
 # macOS: brew install python@3.12 uv
 # Linux: see https://docs.astral.sh/uv/
 
-# Install pre-commit and activate all hook types
-pip install pre-commit
-pre-commit install --install-hooks
-pre-commit install --hook-type pre-push
-pre-commit install --hook-type commit-msg
-
-# Initialize the secrets baseline (if it does not exist yet)
-if [ ! -f .secrets.baseline ]; then
-  detect-secrets scan > .secrets.baseline
-fi
+# Install pinned dev tooling and activate all hook types.
+# The wrapper installs pre-commit + detect-secrets at the exact versions
+# CI uses (see tools/requirements-dev.txt), then wires up the three hook
+# types the repo expects (pre-commit, pre-push, commit-msg).
+scripts/dev_install.sh
 
 # Install backend dependencies
 cd backend

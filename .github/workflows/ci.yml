@@ -28,8 +28,9 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - name: Install pre-commit
-        run: pip install pre-commit
+          cache-dependency-path: tools/requirements-dev.txt
+      - name: Install pinned dev toolchain
+        run: pip install -r tools/requirements-dev.txt
       - name: Run pre-commit on all files
         run: pre-commit run --all-files --show-diff-on-failure
 
