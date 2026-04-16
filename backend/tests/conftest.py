@@ -2,10 +2,10 @@
 
 Integration tests rely on a live Postgres with the ParadeDB extensions
 (pgvector + pg_search). The fixture prefers an externally-provided
-\`AFYA_SAHIHI_TEST_DATABASE_URL\` — populated by the CI service container —
-and falls back to spinning up a container locally via testcontainers.
-Either way, the fixture returns the Alembic-ready DSN and the raw host/
-port components the test may need.
+AFYA_SAHIHI_TEST_DATABASE_URL (populated by the CI service container) and
+falls back to spinning up a container locally via testcontainers. Either
+way, the fixture returns the Alembic-ready DSN and the raw host/port
+components the test may need.
 """
 
 from __future__ import annotations
