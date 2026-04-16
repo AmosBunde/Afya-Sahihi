@@ -1,0 +1,14 @@
+# Developer toolchain for Afya Sahihi.
+#
+# Everything in this file is used only to run pre-commit, not at runtime. Pin
+# exact versions so every contributor and the CI hygiene job agree on which
+# hook versions execute. Update deliberately; the hook versions in
+# `.pre-commit-config.yaml` are kept in step with these.
+#
+# Install with:
+#   pip install -r tools/requirements-dev.txt
+# or via the wrapper:
+#   scripts/dev_install.sh
+
+pre-commit==4.5.1
+detect-secrets==1.5.0
