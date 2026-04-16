@@ -168,3 +168,11 @@ openapi.yaml
 
 # Pre-commit
 .pre-commit-cache/
+
+# Issue grinder prompt (internal tooling, not committed)
+scripts/issue_grinder_prompt.sh
+
+# Local automation scripts (keep hook scripts tracked, ignore everything else)
+scripts/*.sh
+!scripts/hooks/*.sh
+!scripts/bootstrap_issues.sh
