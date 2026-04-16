@@ -141,7 +141,7 @@ jobs:
         run: |
           cd backend
           uv run pytest tests/integration -v
-      - uses: codecov/codecov-action@v4
+      - uses: codecov/codecov-action@v6
         with:
           files: backend/coverage.xml
 
