@@ -47,6 +47,13 @@
 - changed-files:
   - any-glob-to-any-file: ["deploy/**/*"]
 
+"area/observability":
+- changed-files:
+  - any-glob-to-any-file:
+    - "backend/app/observability/**/*"
+    - "deploy/observability/**/*"
+    - "deploy/k3s/observability/**/*"
+
 "area/env":
 - changed-files:
   - any-glob-to-any-file: ["env/**/*"]
