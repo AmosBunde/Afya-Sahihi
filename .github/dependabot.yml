@@ -63,6 +63,8 @@ updates:
     labels:
       - "area/ci"
       - "type/chore"
+    reviewers:
+      - AmosBunde
     groups:
       # Batch action-version bumps so we do not get one PR per action
       # (three sat open for seven hours before this grouping landed).
@@ -86,6 +88,8 @@ updates:
     labels:
       - "area/labeling-ui"
       - "type/chore"
+    reviewers:
+      - AmosBunde
 
   # Eval harness
   - package-ecosystem: pip
@@ -97,6 +101,8 @@ updates:
     labels:
       - "area/eval"
       - "type/chore"
+    reviewers:
+      - AmosBunde
     ignore:
       # Inspect AI is pinned for reproducibility of eval results
       - dependency-name: "inspect-ai"
@@ -111,6 +117,8 @@ updates:
       - "area/deploy"
       - "type/chore"
       - "touches-security"
+    reviewers:
+      - AmosBunde
   - package-ecosystem: docker
     directory: "/frontend"
     schedule:
@@ -119,6 +127,8 @@ updates:
       - "area/deploy"
       - "type/chore"
       - "touches-security"
+    reviewers:
+      - AmosBunde
   - package-ecosystem: docker
     directory: "/labeling"
     schedule:
@@ -127,3 +137,5 @@ updates:
       - "area/deploy"
       - "type/chore"
       - "touches-security"
+    reviewers:
+      - AmosBunde
