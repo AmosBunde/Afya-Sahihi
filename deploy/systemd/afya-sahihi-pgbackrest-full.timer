@@ -1,0 +1,10 @@
+[Unit]
+Description=Weekly full backup timer for pgBackRest
+
+[Timer]
+OnCalendar=Sun 02:00 Africa/Nairobi
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily differential backup timer for pgBackRest (Mon-Sat)
+
+[Timer]
+OnCalendar=Mon..Sat 02:00 Africa/Nairobi
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

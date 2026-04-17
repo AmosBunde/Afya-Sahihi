@@ -1,0 +1,41 @@
+# Redis ExternalName service.
+#
+# Redis runs on bare metal (afya-sahihi-data-01) via systemd, not inside
+# k3s. This Service + Endpoints pair lets k3s pods reference
+# redis.afya-sahihi.svc.cluster.local:6379 uniformly. When/if Redis
+# migrates into the cluster, replace this with a StatefulSet and the
+# callers stay unchanged.
+#
+# TLS is mandatory; env/gateway.env REDIS_HOST points here.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: afya-sahihi
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/component: cache
+    app.kubernetes.io/part-of: afya-sahihi
+spec:
+  type: ClusterIP
+  ports:
+    - name: redis-tls
+      port: 6379
+      targetPort: 6379
+      protocol: TCP
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: redis
+  namespace: afya-sahihi
+subsets:
+  - addresses:
+      # Replace with the actual IP of afya-sahihi-data-01 on the
+      # internal network. Using a placeholder so kubeconform passes.
+      - ip: 10.0.0.10
+    ports:
+      - name: redis-tls
+        port: 6379
+        protocol: TCP
