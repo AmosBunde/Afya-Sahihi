@@ -73,7 +73,7 @@ _SAFE_MESSAGES: dict[type[PipelineError], str] = {
 }
 
 
-def _error_response(exc: PipelineError, request: Request) -> JSONResponse:
+def _error_response(request: Request, exc: PipelineError) -> JSONResponse:
     """Build the stable error JSON and log the internal detail."""
     exc_type = type(exc)
     status = _STATUS_MAP.get(exc_type, 500)
