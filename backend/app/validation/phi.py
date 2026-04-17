@@ -80,6 +80,17 @@ _PATTERNS: tuple[_Pattern, ...] = (
             re.IGNORECASE,
         ),
     ),
+    # Kenyan passport: letter + 7 digits (e.g. A1234567, B9876543).
+    _Pattern(
+        name="passport",
+        regex=re.compile(r"\b[A-Z]\d{7}\b"),
+    ),
+    # NHIF (National Hospital Insurance Fund) number: 8–12 digit string,
+    # often prefixed with "NHIF" or "nhif".
+    _Pattern(
+        name="nhif",
+        regex=re.compile(r"(?:NHIF|nhif)\s*[:#]?\s*(\d{8,12})\b"),
+    ),
 )
 
 
