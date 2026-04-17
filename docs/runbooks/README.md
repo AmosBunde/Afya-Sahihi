@@ -13,6 +13,7 @@ all you need.
 | [ci-branch-protection.md](./ci-branch-protection.md) | Configure CI branch protection and Codecov integration |
 | [ci-dependabot.md](./ci-dependabot.md) | Enable Dependabot vulnerability alerts and weekly triage procedure |
 | [backup-restore.md](./backup-restore.md) | pgBackRest backup verification and restore rehearsal on standby |
+| [vllm-operations.md](./vllm-operations.md) | Start/stop/debug the MedGemma 27B + 4B vLLM servers on the GPU host |
 
 ## Authoring guidelines
 

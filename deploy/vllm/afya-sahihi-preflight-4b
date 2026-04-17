@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Preflight checks before starting the MedGemma 4B vLLM server.
+#
+# Purpose: run by systemd ExecStartPre= to gate the 4B launch on
+#   hardware and ordering prerequisites. The 4B shares the H100 with
+#   the 27B (ADR-0007), so the 27B must be healthy first — otherwise
+#   the 4B would claim too much VRAM and both would OOM.
+#
+# Exit 0: all checks pass; systemd proceeds to ExecStart.
+# Exit 1: a check failed; message on stderr explains which.
+set -euo pipefail
+
+_fail() { echo "PREFLIGHT FAIL (4B): $1" >&2; exit 1; }
+
+# 1. GPU present
+nvidia-smi >/dev/null 2>&1 \
+  || _fail "nvidia-smi not found or driver not loaded"
+
+# 2. 27B server is healthy (it must have reserved its VRAM first)
+HEALTH_URL="http://127.0.0.1:8000/health"
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "${HEALTH_URL}" 2>/dev/null || echo "000")
+if [ "$HTTP_CODE" != "200" ]; then
+  _fail "27B health check at ${HEALTH_URL} returned ${HTTP_CODE}; 4B must start after 27B"
+fi
+
+# 3. LoRA adapter directory exists (if LoRA is enabled)
+if [ "${VLLM_ENABLE_LORA:-}" = "true" ]; then
+  IFS=',' read -ra MODULES <<< "${VLLM_LORA_MODULES:-}"
+  for module in "${MODULES[@]}"; do
+    ADAPTER_PATH="${module#*=}"
+    if [ ! -d "$ADAPTER_PATH" ]; then
+      _fail "LoRA adapter dir not found: $ADAPTER_PATH"
+    fi
+  done
+fi
+
+# 4. Model download dir has space (10 GB for 4B is generous)
+DLDIR="${VLLM_DOWNLOAD_DIR:-/srv/afya-sahihi/models}"
+if [ ! -d "$DLDIR" ]; then
+  _fail "download dir $DLDIR does not exist"
+fi
+AVAIL_KB=$(df -k "$DLDIR" | awk 'NR==2 {print $4}')
+REQUIRED_KB=$((10 * 1024 * 1024))
+if [ "$AVAIL_KB" -lt "$REQUIRED_KB" ]; then
+  _fail "only $((AVAIL_KB / 1024 / 1024)) GB free in $DLDIR; need 10 GB"
+fi
+
+# 5. Credentials
+if [ -z "${CREDENTIALS_DIRECTORY:-}" ]; then
+  _fail "CREDENTIALS_DIRECTORY not set; is this running under systemd with LoadCredential?"
+fi
+for cred in hf_token api_key; do
+  if [ ! -f "${CREDENTIALS_DIRECTORY}/${cred}" ]; then
+    _fail "missing credential: ${CREDENTIALS_DIRECTORY}/${cred}"
+  fi
+done
+
+GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader | head -1)
+echo "PREFLIGHT OK (4B): $GPU_NAME, 27B healthy, LoRA dirs present"
