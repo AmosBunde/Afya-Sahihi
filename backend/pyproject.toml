@@ -49,7 +49,7 @@ requires = ["hatchling>=1.25.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["app", "ingestion", "audit", "training"]
+packages = ["app", "ingestion", "audit", "training", "retrieval"]
 
 [tool.ruff]
 line-length = 100
