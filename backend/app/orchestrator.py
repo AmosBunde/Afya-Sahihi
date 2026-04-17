@@ -102,13 +102,13 @@ class Orchestrator:
         strict_review_enabled: bool,
         fail_closed: bool,
     ) -> None:
-        self._vllm_27b = vllm_27b
-        self._vllm_4b = vllm_4b
-        self._retrieval = retrieval
-        self._conformal = conformal
-        self._prefilter_threshold = prefilter_threshold
-        self._strict_review_enabled = strict_review_enabled
-        self._fail_closed = fail_closed
+        self.vllm_27b = vllm_27b
+        self.vllm_4b = vllm_4b
+        self.retrieval = retrieval
+        self.conformal = conformal
+        self.prefilter_threshold = prefilter_threshold
+        self.strict_review_enabled = strict_review_enabled
+        self.fail_closed = fail_closed
 
     async def run(self, query: ValidatedQuery) -> PipelineState:
         state = PipelineState(query=query)
@@ -129,11 +129,11 @@ class Orchestrator:
 
     async def _prefilter(self, state: PipelineState) -> PipelineState:
         with tracer.start_as_current_span("orchestrator.prefilter") as span:
-            result = await self._vllm_4b.prefilter(state.query.text)
+            result = await self.vllm_4b.prefilter(state.query.text)
             span.set_attribute("prefilter.score", result.topic_score)
             span.set_attribute("prefilter.safety_flag", result.safety_flag)
 
-            if result.topic_score < self._prefilter_threshold or result.safety_flag:
+            if result.topic_score < self.prefilter_threshold or result.safety_flag:
                 raise PrefilterRejected(
                     reason="topic_coherence_low" if not result.safety_flag else "safety_flag",
                     detail=result,
@@ -143,7 +143,7 @@ class Orchestrator:
     async def _retrieve(self, state: PipelineState) -> PipelineState:
         with tracer.start_as_current_span("orchestrator.retrieve") as span:
             try:
-                result = await self._retrieval.search(
+                result = await self.retrieval.search(
                     query_text=state.query.text,
                     query_embedding=None,
                     top_k=6,
@@ -160,7 +160,7 @@ class Orchestrator:
             if state.retrieval_result is None:  # noqa: SIM108
                 raise GenerationFailed(reason="retrieval_result missing; pipeline out of order")
             try:
-                result = await self._vllm_27b.generate(
+                result = await self.vllm_27b.generate(
                     query=state.query,
                     retrieved_chunks=state.retrieval_result.chunks,
                     request_logprobs=True,
@@ -172,7 +172,7 @@ class Orchestrator:
             return replace(state, generation_result=result)
 
     async def _strict_review(self, state: PipelineState) -> PipelineState:
-        if not self._strict_review_enabled:
+        if not self.strict_review_enabled:
             return state
         if state.generation_result is None:
             raise StrictReviewRejected(reason="generation_result missing; pipeline out of order")
@@ -182,7 +182,7 @@ class Orchestrator:
             return state
 
         with tracer.start_as_current_span("orchestrator.strict_review") as span:
-            result = await self._vllm_27b.strict_review(
+            result = await self.vllm_27b.strict_review(
                 generation=state.generation_result,
                 categories=list(categories & STRICT_REVIEW_CATEGORIES),
             )
@@ -198,7 +198,7 @@ class Orchestrator:
                     reason="generation or retrieval result missing; pipeline out of order"
                 )
             try:
-                result = await self._conformal.construct_set(
+                result = await self.conformal.construct_set(
                     query=state.query,
                     generation=state.generation_result,
                     retrieval=state.retrieval_result,
