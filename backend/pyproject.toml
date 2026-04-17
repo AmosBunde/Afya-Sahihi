@@ -35,13 +35,21 @@ ingestion = [
     "sentence-transformers==3.2.1",
     "torch==2.4.1",
 ]
+# Training pulls in Unsloth + TRL for LoRA fine-tuning. GPU required.
+# Install on the operator workstation or training node only. ADR-0007.
+training = [
+    "unsloth==2024.12.4",
+    "trl==0.12.2",
+    "datasets==3.1.0",
+    "torch==2.4.1",
+]
 
 [build-system]
 requires = ["hatchling>=1.25.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["app"]
+packages = ["app", "ingestion", "audit", "training"]
 
 [tool.ruff]
 line-length = 100
