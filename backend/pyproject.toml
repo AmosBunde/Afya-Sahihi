@@ -43,6 +43,12 @@ training = [
     "datasets==3.1.0",
     "torch==2.4.1",
 ]
+# Retrieval reranker (bge-reranker-v2-m3 via CrossEncoder). CPU inference;
+# installed in the retrieval container only. ADR-0002.
+reranker = [
+    "sentence-transformers==3.2.1",
+    "torch==2.4.1",
+]
 
 [build-system]
 requires = ["hatchling>=1.25.0"]
