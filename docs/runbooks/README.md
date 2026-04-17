@@ -12,6 +12,7 @@ all you need.
 | [bootstrap.md](./bootstrap.md) | First-time cluster bootstrap from bare metal to first green canary |
 | [ci-branch-protection.md](./ci-branch-protection.md) | Configure CI branch protection and Codecov integration |
 | [ci-dependabot.md](./ci-dependabot.md) | Enable Dependabot vulnerability alerts and weekly triage procedure |
+| [backup-restore.md](./backup-restore.md) | pgBackRest backup verification and restore rehearsal on standby |
 
 ## Authoring guidelines
 

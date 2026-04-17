@@ -1,0 +1,39 @@
+[Unit]
+Description=Afya Sahihi Redis 7 — rate limits, job queue, session cache
+Documentation=https://redis.io/docs/latest/operate/oss_and_stack/management/config/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+User=redis
+Group=redis
+ExecStart=/usr/bin/redis-server /etc/redis/afya-sahihi.conf
+ExecStop=/usr/bin/redis-cli -p 6379 --tls \
+    --cert /etc/redis/tls/server.crt \
+    --key /etc/redis/tls/server.key \
+    --cacert /etc/redis/tls/ca.crt \
+    SHUTDOWN NOSAVE
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=30
+TimeoutStopSec=10
+
+# Hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/redis /var/log/redis /run/redis
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+
+# Memory overcommit — Redis needs this for background save to succeed
+# on a host with less free memory than used memory. The sysctl is set
+# in the preflight script, not here; the service just documents the
+# dependency.
+# Requires: vm.overcommit_memory = 1
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,19 @@
+[Unit]
+Description=Afya Sahihi pgBackRest differential backup (daily Mon-Sat 02:00)
+Documentation=https://pgbackrest.org/configuration.html
+After=postgresql.service
+
+[Service]
+Type=oneshot
+User=postgres
+Group=postgres
+ExecStart=/usr/bin/pgbackrest --stanza=afya-sahihi --type=diff backup
+TimeoutStartSec=3600
+
+LoadCredential=pgbackrest-s3-key:/run/credentials/pgbackrest-s3-key
+LoadCredential=pgbackrest-s3-secret:/run/credentials/pgbackrest-s3-secret
+LoadCredential=pgbackrest-cipher-pass:/run/credentials/pgbackrest-cipher-pass
+
+Environment=PGBACKREST_REPO1_S3_KEY_FILE=%d/pgbackrest-s3-key
+Environment=PGBACKREST_REPO1_S3_KEY_SECRET_FILE=%d/pgbackrest-s3-secret
+Environment=PGBACKREST_REPO1_CIPHER_PASS_FILE=%d/pgbackrest-cipher-pass
