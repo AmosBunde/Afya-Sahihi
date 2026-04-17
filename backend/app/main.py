@@ -15,6 +15,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import chat, health
+from app.api.error_handler import register_error_handlers
 from app.api.middleware import RateLimiter, RequestIdMiddleware
 from app.settings import Settings
 
@@ -113,6 +114,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
     )
+
+    # Error handlers (fail-closed; stable JSON shape; no internals leaked)
+    register_error_handlers(app)
 
     # Routes
     app.include_router(health.router)
