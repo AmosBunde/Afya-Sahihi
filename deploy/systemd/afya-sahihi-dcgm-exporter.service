@@ -1,0 +1,36 @@
+[Unit]
+Description=Afya Sahihi DCGM Exporter — GPU metrics for Prometheus
+Documentation=https://github.com/NVIDIA/dcgm-exporter
+After=nvidia-persistenced.service network-online.target
+Wants=network-online.target
+Requires=nvidia-persistenced.service
+
+[Service]
+Type=simple
+User=afya-sahihi
+Group=afya-sahihi
+# DCGM exporter scrapes NVIDIA DCGM and exposes /metrics on port 9400.
+# Prometheus scrapes this alongside the vLLM /metrics on port 8002.
+ExecStart=/usr/bin/dcgm-exporter \
+    --address :9400 \
+    --collect-interval 5000 \
+    --collectors /etc/dcgm-exporter/default-counters.csv
+
+Restart=on-failure
+RestartSec=10
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+DeviceAllow=/dev/nvidia* rwm
+DeviceAllow=/dev/nvidia-caps/* rwm
+DeviceAllow=char-nvidia-uvm rwm
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=afya-sahihi-dcgm-exporter
+
+[Install]
+WantedBy=multi-user.target

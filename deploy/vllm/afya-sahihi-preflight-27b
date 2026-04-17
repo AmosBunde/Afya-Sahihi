@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# Preflight checks before starting the MedGemma 27B vLLM server.
+#
+# Purpose: run by systemd ExecStartPre= to gate the main launch on
+#   hardware-level prerequisites. Fails fast with an actionable
+#   message so the operator does not wait 300 s for a weight-load
+#   timeout to discover the GPU driver is wrong.
+#
+# Exit 0: all checks pass; systemd proceeds to ExecStart.
+# Exit 1: a check failed; message on stderr explains which.
+set -euo pipefail
+
+_fail() { echo "PREFLIGHT FAIL: $1" >&2; exit 1; }
+
+# 1. NVIDIA driver loaded
+nvidia-smi >/dev/null 2>&1 \
+  || _fail "nvidia-smi not found or driver not loaded"
+
+# 2. GPU is an H100 (or A100 for staging)
+GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader | head -1)
+case "$GPU_NAME" in
+  *H100*|*A100*) ;;
+  *) _fail "expected H100/A100 GPU, found: $GPU_NAME" ;;
+esac
+
+# 3. Driver version >= 550 (required for FP8 on H100)
+DRIVER_VER=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -1)
+DRIVER_MAJOR=${DRIVER_VER%%.*}
+if [ "$DRIVER_MAJOR" -lt 550 ]; then
+  _fail "driver $DRIVER_VER too old; need >= 550 for FP8 support"
+fi
+
+# 4. GPU memory >= 70 GB (H100 80 GB minus driver overhead)
+MEM_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -1)
+if [ "$MEM_MB" -lt 70000 ]; then
+  _fail "GPU memory ${MEM_MB} MiB < 70000 MiB; 27B FP8 needs ~40 GB + KV cache headroom"
+fi
+
+# 5. CUDA visible devices match what the env file expects
+if [ -n "${CUDA_VISIBLE_DEVICES:-}" ]; then
+  N_VISIBLE=$(echo "$CUDA_VISIBLE_DEVICES" | tr ',' '\n' | wc -l)
+  N_EXPECTED=${VLLM_TENSOR_PARALLEL_SIZE:-1}
+  if [ "$N_VISIBLE" -lt "$N_EXPECTED" ]; then
+    _fail "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES provides $N_VISIBLE GPUs but tensor_parallel=$N_EXPECTED"
+  fi
+fi
+
+# 6. Model download dir is writable and has space (30 GB)
+DLDIR="${VLLM_DOWNLOAD_DIR:-/srv/afya-sahihi/models}"
+if [ ! -d "$DLDIR" ]; then
+  _fail "download dir $DLDIR does not exist"
+fi
+AVAIL_KB=$(df -k "$DLDIR" | awk 'NR==2 {print $4}')
+REQUIRED_KB=$((30 * 1024 * 1024))
+if [ "$AVAIL_KB" -lt "$REQUIRED_KB" ]; then
+  _fail "only $((AVAIL_KB / 1024 / 1024)) GB free in $DLDIR; need 30 GB"
+fi
+
+# 7. Credentials directory is set (systemd LoadCredential)
+if [ -z "${CREDENTIALS_DIRECTORY:-}" ]; then
+  _fail "CREDENTIALS_DIRECTORY not set; is this running under systemd with LoadCredential?"
+fi
+for cred in hf_token api_key; do
+  if [ ! -f "${CREDENTIALS_DIRECTORY}/${cred}" ]; then
+    _fail "missing credential: ${CREDENTIALS_DIRECTORY}/${cred}"
+  fi
+done
+
+echo "PREFLIGHT OK: $GPU_NAME, driver $DRIVER_VER, ${MEM_MB} MiB VRAM"
