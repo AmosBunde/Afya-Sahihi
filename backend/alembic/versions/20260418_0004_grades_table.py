@@ -1,20 +1,27 @@
-"""Grades table with hash-chain chain-of-custody.
+"""Replace grades table with rubric+hash-chain shape for the Tier 3 UI.
 
 Revision ID: 0004_grades
 Revises: 0003_audit_chain
 Create Date: 2026-04-18
 
-Stores the Tier 3 clinician reviewer grades per case. The rubric has
-five dimensions, each a 1-5 Likert integer (enforced via CHECK). Each
-row carries `prev_hash` and `row_hash` that form a chain per reviewer:
-a reviewer's next grade's prev_hash must equal the previous grade's
-row_hash, making tampering detectable offline.
+The initial schema (0001_init) created a `grades` table with columns
+keyed off `queries_audit.id` and score names (correctness, refusal, …)
+that predate the finalised rubric. The Tier 3 labeling UI (issue #29)
+uses the ADR-0006 rubric dimensions (accuracy, safety,
+guideline_alignment, local_appropriateness, clarity), references cases
+by `case_id` (not by queries_audit), and carries a SHA-256 hash chain
+per reviewer.
 
-Unlike `queries_audit`, `grades` permits UPDATE (raters occasionally
-correct clerical errors on their own grades) — but every UPDATE breaks
-the hash chain from that point forward. A chain-verification script
-(scripts/labeling/verify_grade_chain.py, landing with issue #29) walks
-the chain per reviewer and flags the first broken row.
+Rather than ALTER ten columns on a table that has no production rows
+yet (no environment has shipped labeling), we DROP the old grades and
+CREATE the new one. The downgrade reverses both halves — it rebuilds
+the 0001 shape so rollbacks still land on the same state as fresh
+bootstrap.
+
+Unlike `queries_audit`, the new `grades` permits UPDATE (raters
+occasionally correct clerical errors). Any UPDATE breaks the hash
+chain from that row forward; a chain-verification script walks the
+chain per reviewer and flags the first broken row.
 
 Companion to issue #29.
 """
@@ -30,6 +37,11 @@ depends_on: str | tuple[str, ...] | None = None
 
 
 _UPGRADE_SQL = """
+-- Drop the 0001 shape. No production data exists; no environment has
+-- persisted grades yet. If that changes before 0004 ships to prod,
+-- this migration must be rewritten as an in-place ALTER.
+DROP TABLE IF EXISTS grades CASCADE;
+
 CREATE TABLE grades (
     grade_id               UUID PRIMARY KEY,
     case_id                TEXT NOT NULL,
@@ -59,18 +71,17 @@ COMMENT ON TABLE grades IS
 COMMENT ON COLUMN grades.prev_hash IS
     'SHA-256 row_hash of this reviewer''s previous grade. Empty for first grade.';
 COMMENT ON COLUMN grades.row_hash IS
-    'SHA-256 over canonical payload + prev_hash. Computed in labeling.rubric.compute_row_hash.';
+    'SHA-256 over canonical payload + prev_hash. Computed in '
+    'labeling.rubric.compute_row_hash.';
 
--- A reviewer should not grade the same case twice. Unique index enforces this.
 CREATE UNIQUE INDEX grades_reviewer_case_unique ON grades (reviewer_id, case_id);
-
--- Agreement queries filter by submitted_at window and group by case.
 CREATE INDEX grades_submitted_at ON grades (submitted_at);
 CREATE INDEX grades_case_id ON grades (case_id);
-CREATE INDEX grades_reviewer_submitted_at ON grades (reviewer_id, submitted_at DESC);
+CREATE INDEX grades_reviewer_submitted_at
+    ON grades (reviewer_id, submitted_at DESC);
 
--- Least-privilege role: the labeling app reads and inserts but never deletes.
--- Corrections go through a compensating INSERT + manual DB task.
+-- Least-privilege role. The 0001 grant on the old table was dropped
+-- with the CASCADE above; we re-grant here for the new shape.
 GRANT SELECT, INSERT, UPDATE ON grades TO afya_sahihi_app;
 """
 
@@ -79,7 +90,26 @@ DROP INDEX IF EXISTS grades_reviewer_submitted_at;
 DROP INDEX IF EXISTS grades_case_id;
 DROP INDEX IF EXISTS grades_submitted_at;
 DROP INDEX IF EXISTS grades_reviewer_case_unique;
-DROP TABLE IF EXISTS grades;
+DROP TABLE IF EXISTS grades CASCADE;
+
+-- Restore the 0001 shape so the schema matches a fresh bootstrap.
+CREATE TABLE grades (
+    id                BIGSERIAL PRIMARY KEY,
+    query_audit_id    BIGINT NOT NULL REFERENCES queries_audit(id)
+                        ON DELETE CASCADE,
+    reviewer_id       TEXT NOT NULL,
+    rubric_version    TEXT NOT NULL,
+    score_correctness INTEGER NOT NULL CHECK (score_correctness BETWEEN 1 AND 5),
+    score_safety      INTEGER NOT NULL CHECK (score_safety BETWEEN 1 AND 5),
+    score_citation    INTEGER NOT NULL CHECK (score_citation BETWEEN 1 AND 5),
+    score_clarity     INTEGER NOT NULL CHECK (score_clarity BETWEEN 1 AND 5),
+    score_refusal     INTEGER NOT NULL CHECK (score_refusal BETWEEN 1 AND 5),
+    reviewer_notes    TEXT,
+    graded_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX grades_query_audit_id ON grades (query_audit_id);
+CREATE INDEX grades_reviewer_id ON grades (reviewer_id);
+GRANT SELECT, INSERT ON grades TO afya_sahihi_app;
 """
 
 
