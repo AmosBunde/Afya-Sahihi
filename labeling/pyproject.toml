@@ -1,0 +1,42 @@
+[project]
+name = "afya-sahihi-labeling"
+version = "0.0.1"
+description = "Afya Sahihi Tier 3 labeling UI — Streamlit clinician reviewer."
+requires-python = "==3.12.*"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Aga Khan University" }]
+
+# Pure-Python core (rubric, kappa, auth gate, queue keys, URL builder)
+# imports without streamlit/redis/asyncpg. The Streamlit shell and the
+# Redis + asyncpg clients are extras so CI can unit-test the math
+# without installing the full UI stack. ADR-0009.
+dependencies = [
+    "pydantic==2.9.2",
+    "pydantic-settings==2.6.1",
+]
+
+[project.optional-dependencies]
+ui = [
+    "streamlit==1.39.0",
+    "redis==5.2.1",
+    "asyncpg==0.30.0",
+    "PyJWT[crypto]==2.12.0",
+    "prometheus-client==0.21.1",
+]
+dev = [
+    "pytest==8.3.3",
+    "pytest-asyncio==0.24.0",
+    "ruff==0.6.9",
+    "pyright==1.1.384",
+]
+
+[build-system]
+requires = ["hatchling>=1.25.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

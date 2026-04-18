@@ -1,0 +1,174 @@
+# Tier 3 clinician labeling UI (Streamlit).
+#
+# Runs the `labeling/` module behind Traefik. The ingress forwards the
+# validated OIDC claims as X-Forwarded-Claims; labeling/auth.py
+# re-validates and enforces the `clinical_reviewer` / `senior_clinician`
+# role gate.
+#
+# Traffic is tiny (12 users, ~20 form submits/user/week). Single replica
+# with a PDB=0 is sufficient; the CronJob runs Fleiss kappa daily and is
+# the only other piece of infrastructure (50-jobs/labeling-kappa-cronjob.yaml).
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: afya-sahihi-labeling-env
+  namespace: afya-sahihi
+  labels:
+    app.kubernetes.io/name: afya-sahihi-labeling
+    app.kubernetes.io/part-of: afya-sahihi
+data:
+  SERVICE_NAME: afya-sahihi-labeling
+  SERVICE_PORT: "8085"
+  STREAMLIT_SERVER_HEADLESS: "true"
+  STREAMLIT_SERVER_ENABLE_CORS: "false"
+  STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION: "true"
+  STREAMLIT_BROWSER_GATHER_USAGE_STATS: "false"
+  STREAMLIT_THEME_BASE: light
+  LABELING_QUEUE_KEY: afya-sahihi:labeling:queue
+  LABELING_QUEUE_MAX_PER_REVIEWER_PER_DAY: "30"
+  RUBRIC_VERSION: v1
+  DUAL_RATER_RATIO: "0.2"
+  KAPPA_ALERT_THRESHOLD: "0.7"
+  PDF_VIEWER_BASE_URL: https://afya-sahihi.aku.edu/provenance
+  PDF_VIEWER_HIGHLIGHT_BBOX: "true"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: afya-sahihi-labeling
+  namespace: afya-sahihi
+  labels:
+    app.kubernetes.io/name: afya-sahihi-labeling
+    app.kubernetes.io/component: ui
+    app.kubernetes.io/part-of: afya-sahihi
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: afya-sahihi-labeling
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: afya-sahihi-labeling
+    spec:
+      serviceAccountName: afya-sahihi-labeling
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: streamlit
+          image: ghcr.io/akuhealth/afya-sahihi-labeling:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - streamlit
+            - run
+            - labeling/app.py
+            - --server.port=8085
+            - --server.address=0.0.0.0
+          envFrom:
+            - configMapRef:
+                name: afya-sahihi-labeling-env
+          env:
+            - name: PG_HOST
+              value: afya-sahihi-postgres
+            - name: PG_DATABASE
+              value: afya-sahihi
+            - name: PG_USER
+              valueFrom:
+                secretKeyRef:
+                  name: afya-sahihi-postgres-app
+                  key: user
+            - name: PG_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: afya-sahihi-postgres-app
+                  key: password
+            - name: REDIS_HOST
+              value: afya-sahihi-redis
+            - name: OIDC_ISSUER_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: afya-sahihi-oidc
+                  key: issuer_url
+                  optional: true
+            - name: OIDC_AUDIENCE
+              valueFrom:
+                configMapKeyRef:
+                  name: afya-sahihi-oidc
+                  key: audience
+                  optional: true
+          ports:
+            - name: http
+              containerPort: 8085
+          resources:
+            requests:
+              cpu: "100m"
+              memory: 256Mi
+            limits:
+              cpu: "500m"
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /_stcore/health
+              port: 8085
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /_stcore/health
+              port: 8085
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: streamlit-cache
+              mountPath: /home/app/.streamlit
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 100Mi
+        - name: streamlit-cache
+          emptyDir:
+            sizeLimit: 100Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: afya-sahihi-labeling
+  namespace: afya-sahihi
+  labels:
+    app.kubernetes.io/name: afya-sahihi-labeling
+    app.kubernetes.io/part-of: afya-sahihi
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: afya-sahihi-labeling
+  ports:
+    - name: http
+      port: 8085
+      targetPort: http
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: afya-sahihi-labeling
+  namespace: afya-sahihi
+  labels:
+    app.kubernetes.io/name: afya-sahihi-labeling
+    app.kubernetes.io/part-of: afya-sahihi

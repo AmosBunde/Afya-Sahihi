@@ -1,0 +1,87 @@
+# Daily Fleiss kappa job.
+#
+# Runs at 03:00 Africa/Nairobi each day. Computes kappa per rubric
+# dimension over the previous 24h of grades, logs the report, and exits
+# non-zero when any dimension drops below KAPPA_ALERT_THRESHOLD and the
+# operator has set KAPPA_FAIL_ON_ALERT=1 (off by default — low agreement
+# is a signal, not necessarily a pager-worthy incident).
+
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: afya-sahihi-labeling-kappa
+  namespace: afya-sahihi
+  labels:
+    app.kubernetes.io/name: afya-sahihi-labeling-kappa
+    app.kubernetes.io/component: eval
+    app.kubernetes.io/part-of: afya-sahihi
+spec:
+  schedule: "0 3 * * *"  # Daily 03:00 Africa/Nairobi
+  timeZone: Africa/Nairobi
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 7
+  failedJobsHistoryLimit: 14
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 600
+      ttlSecondsAfterFinished: 604800
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: afya-sahihi-labeling-kappa
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: afya-sahihi-labeling
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: kappa
+              image: ghcr.io/akuhealth/afya-sahihi-labeling:latest
+              imagePullPolicy: IfNotPresent
+              command: ["python", "-m", "labeling.daily_kappa"]
+              envFrom:
+                - configMapRef:
+                    name: afya-sahihi-labeling-env
+              env:
+                - name: PG_HOST
+                  value: afya-sahihi-postgres
+                - name: PG_DATABASE
+                  value: afya-sahihi
+                - name: PG_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: afya-sahihi-postgres-app
+                      key: user
+                - name: PG_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: afya-sahihi-postgres-app
+                      key: password
+                - name: KAPPA_FAIL_ON_ALERT
+                  value: "0"
+              resources:
+                requests:
+                  cpu: "100m"
+                  memory: 256Mi
+                limits:
+                  cpu: "500m"
+                  memory: 512Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir:
+                sizeLimit: 100Mi
