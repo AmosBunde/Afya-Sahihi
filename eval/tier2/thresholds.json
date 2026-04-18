@@ -1,0 +1,9 @@
+{
+  "comment": "Tier 2 gate thresholds. Pre-deploy blocks on any breach. Match env/eval.env TIER2_*_MAX values; updates require an ADR or incident ticket.",
+  "ece_max": 0.08,
+  "coverage_deviation_max": 0.03,
+  "set_size_increase_max_pct": 15.0,
+  "topic_coherence_min": 0.80,
+  "coverage_target": 0.90,
+  "set_size_baseline": 3.5
+}

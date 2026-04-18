@@ -1,0 +1,88 @@
+# Tier 2 nightly eval CronJob.
+#
+# Runs the 2000-case regression suite nightly at 02:00 Africa/Nairobi,
+# posts results to Slack via webhook, and fails the Job when any
+# threshold breaches (ECE > 0.08, coverage deviation > 0.03, set size
+# increase > 15%, topic coherence < 0.80). Concurrent runs are
+# Forbid'd because a single eval holds the gateway under load.
+#
+# Dependencies:
+#   - The eval container image (ghcr.io/akuhealth/afya-sahihi-eval)
+#     lands with issue #34.
+#   - SealedSecret afya-sahihi-slack-webhook provides SLACK_WEBHOOK_URL.
+#   - ConfigMap afya-sahihi-eval-env mirrors env/eval.env.
+
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: afya-sahihi-tier2-eval
+  namespace: afya-sahihi
+  labels:
+    app.kubernetes.io/name: afya-sahihi-tier2-eval
+    app.kubernetes.io/component: eval
+    app.kubernetes.io/part-of: afya-sahihi
+spec:
+  schedule: "0 2 * * *"  # Daily 02:00 Africa/Nairobi
+  timeZone: Africa/Nairobi
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 7200
+  successfulJobsHistoryLimit: 7
+  failedJobsHistoryLimit: 14
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 7200
+      ttlSecondsAfterFinished: 604800
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: afya-sahihi-tier2-eval
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: afya-sahihi-eval
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: tier2
+              image: ghcr.io/akuhealth/afya-sahihi-eval:latest
+              imagePullPolicy: IfNotPresent
+              command: ["uv", "run", "python", "-m", "eval.tier2.run"]
+              envFrom:
+                - configMapRef:
+                    name: afya-sahihi-eval-env
+              env:
+                - name: SLACK_WEBHOOK_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: afya-sahihi-slack-webhook
+                      key: url
+                      optional: true
+              resources:
+                requests:
+                  cpu: "2"
+                  memory: 4Gi
+                limits:
+                  cpu: "4"
+                  memory: 8Gi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+                - name: logs
+                  mountPath: /srv/afya-sahihi/eval/logs
+          volumes:
+            - name: tmp
+              emptyDir:
+                sizeLimit: 2Gi
+            - name: logs
+              persistentVolumeClaim:
+                claimName: afya-sahihi-eval-logs
