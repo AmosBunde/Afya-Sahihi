@@ -152,9 +152,8 @@ async def _main() -> int:  # pragma: no cover - thin integration shim
             alert_threshold=settings.kappa_alert_threshold,
         )
         if report.alerts:
-            print("kappa alerts:")  # noqa: T201  # CronJob stdout is the channel.
             for alert in report.alerts:
-                print(f"  {alert}")  # noqa: T201
+                logger.warning("kappa alert", extra={"alert": alert})
             return 1 if os.environ.get("KAPPA_FAIL_ON_ALERT") == "1" else 0
         return 0
     finally:
