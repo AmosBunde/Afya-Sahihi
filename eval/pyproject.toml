@@ -23,7 +23,7 @@ requires = ["hatchling>=1.25.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["tier1"]
+packages = ["tier1", "tier2"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

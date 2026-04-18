@@ -41,8 +41,12 @@ def post_to_slack(verdict: Tier2Verdict, *, run_id: str = "") -> bool:
     )
 
     try:
-        # URL is constrained to SLACK_WEBHOOK_URL env var; not user input.
-        with urllib.request.urlopen(req, timeout=_TIMEOUT_SECONDS) as resp:  # noqa: S310  # nosec B310
+        # URL source is SLACK_WEBHOOK_URL, provisioned via SealedSecret by
+        # cluster admin — not user input. urllib is fine; avoids pulling
+        # httpx/requests into the eval image just for one POST.
+        with urllib.request.urlopen(  # noqa: S310  # nosec B310  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
+            req, timeout=_TIMEOUT_SECONDS
+        ) as resp:
             return 200 <= resp.status < 300
     except (URLError, TimeoutError) as exc:
         logger.warning(
