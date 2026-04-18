@@ -1,0 +1,99 @@
+# Prometheus alert rules for the conformal coverage monitor.
+#
+# Wired into Alertmanager (issue #32) which routes to PagerDuty.
+# The thresholds mirror env/conformal.env:
+#   COVERAGE_ALERT_THRESHOLD_DEVIATION=0.05
+#   COVERAGE_ALERT_MIN_SAMPLES=200
+#   DRIFT_DETECTOR_THRESHOLD=0.01
+#
+# Rationale for `for: 10m` on coverage alerts: single-scrape spikes
+# are noise; sustained deviation is signal. The acceptance bar in
+# issue #26 is "synthetic drift injection triggers alert in under 10
+# minutes" — this meets that bound with room for Prometheus scrape
+# interval (15s default).
+
+---
+groups:
+  - name: conformal-coverage
+    interval: 30s
+    rules:
+      - alert: ConformalCoverageBelowTarget
+        expr: |
+          (
+            afya_sahihi_conformal_coverage_target
+            - afya_sahihi_conformal_coverage_empirical
+          ) > 0.05
+        for: 10m
+        labels:
+          severity: page
+          team: clinical-ml
+          component: conformal
+        annotations:
+          summary: >-
+            Conformal coverage below target by >5pp for 10m on stratum
+            {{ $labels.stratum }}
+          description: >-
+            Empirical coverage is {{ $value | humanizePercentage }} below
+            the target 1 - alpha. Clinicians are receiving prediction sets
+            that no longer carry the marginal coverage guarantee. See
+            docs/runbooks/coverage-drift.md.
+          runbook_url: https://github.com/AmosBunde/Afya-Sahihi/blob/main/docs/runbooks/coverage-drift.md
+
+      - alert: ConformalCoverageAboveTarget
+        expr: |
+          (
+            afya_sahihi_conformal_coverage_empirical
+            - afya_sahihi_conformal_coverage_target
+          ) > 0.05
+        for: 30m
+        labels:
+          severity: ticket
+          team: clinical-ml
+          component: conformal
+        annotations:
+          summary: >-
+            Conformal coverage over-conservative by >5pp on stratum
+            {{ $labels.stratum }}
+          description: >-
+            Over-coverage is not a safety risk but wastes precision — sets
+            are bigger than they need to be. Likely causes: inflated q̂
+            from stale high-variance calibration, or a shift that made the
+            test distribution easier than calibration.
+
+      - alert: ConformalDriftDetected
+        expr: |
+          increase(
+            afya_sahihi_conformal_drift_detected_total[10m]
+          ) > 0
+        for: 0s
+        labels:
+          severity: ticket
+          team: clinical-ml
+          component: conformal
+        annotations:
+          summary: >-
+            MMD drift detected on stratum {{ $labels.stratum }}
+          description: >-
+            The nonconformity score distribution on stratum
+            {{ $labels.stratum }} has drifted from its reference window.
+            See the MMD² gauge afya_sahihi_conformal_drift_mmd. Usually
+            resolved by a calibration refresh; see the runbook §3.
+          runbook_url: https://github.com/AmosBunde/Afya-Sahihi/blob/main/docs/runbooks/coverage-drift.md
+
+      - alert: ConformalSetSizeExploded
+        expr: |
+          afya_sahihi_conformal_set_size_mean > 20
+        for: 5m
+        labels:
+          severity: page
+          team: clinical-ml
+          component: conformal
+        annotations:
+          summary: >-
+            Conformal set size > 20 on stratum {{ $labels.stratum }}
+          description: >-
+            Mean prediction-set size is {{ $value }}. Target is 3–5. A
+            set this large is degenerate — either q̂ is stale, the
+            scorer is returning 0 for all candidates, or retrieval is
+            returning unboundedly many candidates. See runbook §5.
+          runbook_url: https://github.com/AmosBunde/Afya-Sahihi/blob/main/docs/runbooks/coverage-drift.md
