@@ -1,0 +1,29 @@
+[project]
+name = "afya-sahihi-eval"
+version = "0.0.1"
+description = "Afya Sahihi evaluation harness — Tier 1/2/3 Inspect AI tasks."
+requires-python = "==3.12.*"
+license = { text = "Apache-2.0" }
+
+# Inspect AI is the only runtime dep. The scorer is pure stdlib and
+# can be imported/tested without it.
+dependencies = [
+    "inspect-ai>=0.3.0,<0.4.0",
+    "pydantic==2.9.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.3.3",
+    "ruff==0.6.9",
+]
+
+[build-system]
+requires = ["hatchling>=1.25.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["tier1"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

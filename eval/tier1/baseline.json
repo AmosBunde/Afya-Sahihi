@@ -1,0 +1,8 @@
+{
+  "comment": "Baseline pass rate for Tier 1 golden set. CI fails if current pass rate drops below this value. Updated only by deliberate PR (never by CI itself). Threshold is acceptance floor 0.95; baseline may be higher.",
+  "pass_rate": 0.95,
+  "n_cases": 30,
+  "model_version": "seed-v1",
+  "recorded_at": "2026-04-18",
+  "recorded_by": "issue-27-initial-seed"
+}
