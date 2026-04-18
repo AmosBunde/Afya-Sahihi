@@ -237,7 +237,15 @@ jobs:
     name: Tier 1 evals (Inspect AI)
     runs-on: ubuntu-latest
     needs: [preflight, backend-tests]
-    if: needs.preflight.outputs.has_eval == 'true'
+    # Run only when the full stack is deployable (Dockerfiles + eval
+    # task both present). The task requires a live model endpoint;
+    # without the gateway container built and reachable, the
+    # `--model afya-sahihi` provider is unresolvable. Pre-deployment
+    # coverage is the pure-Python scorer tests in the backend-tests
+    # job (16 tests).
+    if: >-
+      needs.preflight.outputs.has_eval == 'true'
+      && needs.preflight.outputs.has_backend_dockerfile == 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
