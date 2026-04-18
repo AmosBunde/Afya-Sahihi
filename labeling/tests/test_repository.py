@@ -1,4 +1,4 @@
-"""Tests for GradeRepository. Uses a fake asyncpg pool."""
+"""Tests for GradeRepository. Uses a fake asyncpg pool + transaction."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 
 from labeling.repository import GradeRepository
-from labeling.rubric import RubricScores, build_grade
+from labeling.rubric import RubricScores
 
 
 class FakeConnection:
@@ -17,6 +17,7 @@ class FakeConnection:
         self.executed: list[tuple[str, tuple[Any, ...]]] = []
         self.fetchval_result: Any = None
         self.fetch_result: list[dict[str, Any]] = []
+        self.transaction_entered: int = 0
 
     async def execute(self, query: str, *args: Any) -> Any:
         self.executed.append((query, args))
@@ -29,6 +30,14 @@ class FakeConnection:
     async def fetch(self, query: str, *args: Any) -> list[Any]:
         self.executed.append((query, args))
         return self.fetch_result
+
+    def transaction(self, **_: Any) -> Any:
+        @asynccontextmanager
+        async def _cm() -> Any:
+            self.transaction_entered += 1
+            yield
+
+        return _cm()
 
 
 class FakePool:
@@ -55,47 +64,47 @@ def repo(conn: FakeConnection) -> GradeRepository:
     return GradeRepository(pool=FakePool(conn), statement_timeout_ms=1234)
 
 
-def _grade() -> Any:
-    return build_grade(
+def _scores() -> RubricScores:
+    return RubricScores(
+        accuracy=4,
+        safety=5,
+        guideline_alignment=4,
+        local_appropriateness=3,
+        clarity=4,
+    )
+
+
+async def test_insert_next_grade_runs_inside_transaction(
+    repo: GradeRepository, conn: FakeConnection
+) -> None:
+    await repo.insert_next_grade(
         grade_id="g-1",
         case_id="c-1",
         reviewer_id="u-1",
         reviewer_role="clinical_reviewer",
         rubric_version="v1",
-        scores=RubricScores(
-            accuracy=4,
-            safety=5,
-            guideline_alignment=4,
-            local_appropriateness=3,
-            clarity=4,
-        ),
+        scores=_scores(),
         notes="ok",
         time_spent_seconds=90,
         submitted_at=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
-        prev_hash="",
     )
+    assert conn.transaction_entered == 1
 
 
-async def test_latest_row_hash_empty_returns_empty_string(
+async def test_insert_next_grade_sets_statement_timeout(
     repo: GradeRepository, conn: FakeConnection
 ) -> None:
-    conn.fetchval_result = None
-    result = await repo.latest_row_hash(reviewer_id="u-1")
-    assert result == ""
-
-
-async def test_latest_row_hash_returns_value(
-    repo: GradeRepository, conn: FakeConnection
-) -> None:
-    conn.fetchval_result = "abcd1234"
-    result = await repo.latest_row_hash(reviewer_id="u-1")
-    assert result == "abcd1234"
-
-
-async def test_insert_grade_sets_statement_timeout(
-    repo: GradeRepository, conn: FakeConnection
-) -> None:
-    await repo.insert_grade(_grade())
+    await repo.insert_next_grade(
+        grade_id="g-1",
+        case_id="c-1",
+        reviewer_id="u-1",
+        reviewer_role="clinical_reviewer",
+        rubric_version="v1",
+        scores=_scores(),
+        notes="ok",
+        time_spent_seconds=90,
+        submitted_at=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
+    )
     timeout_calls = [
         q for q, _ in conn.executed if q.startswith("SET LOCAL statement_timeout")
     ]
@@ -103,33 +112,82 @@ async def test_insert_grade_sets_statement_timeout(
     assert "1234ms" in timeout_calls[0]
 
 
-async def test_insert_grade_passes_expected_columns(
+async def test_insert_next_grade_takes_advisory_lock(
     repo: GradeRepository, conn: FakeConnection
 ) -> None:
-    grade = _grade()
-    await repo.insert_grade(grade)
-    # The INSERT is the second execute call (first is SET LOCAL).
-    insert_call = [q for q, _ in conn.executed if q.strip().startswith("INSERT")]
-    assert len(insert_call) == 1
+    await repo.insert_next_grade(
+        grade_id="g-1",
+        case_id="c-1",
+        reviewer_id="u-42",
+        reviewer_role="clinical_reviewer",
+        rubric_version="v1",
+        scores=_scores(),
+        notes="ok",
+        time_spent_seconds=90,
+        submitted_at=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
+    )
+    lock_calls = [
+        (q, args) for q, args in conn.executed if "pg_advisory_xact_lock" in q
+    ]
+    assert len(lock_calls) == 1
+    assert lock_calls[0][1] == ("u-42",)
 
-    # Find the args for the INSERT
-    for q, args in conn.executed:
-        if q.strip().startswith("INSERT"):
-            assert args[0] == "g-1"  # grade_id
-            assert args[1] == "c-1"  # case_id
-            assert args[2] == "u-1"  # reviewer_id
-            assert args[3] == "clinical_reviewer"  # reviewer_role
-            assert args[4] == "v1"  # rubric_version
-            assert args[5] == 4  # accuracy
-            assert args[6] == 5  # safety
-            assert args[7] == 4  # guideline_alignment
-            assert args[8] == 3  # local_appropriateness
-            assert args[9] == 4  # clarity
-            assert args[10] == "ok"  # notes
-            assert args[11] == 90  # time_spent_seconds
-            assert args[13] == ""  # prev_hash
-            assert args[14] == grade.row_hash  # row_hash
-            break
+
+async def test_insert_next_grade_chains_on_prev_hash(
+    repo: GradeRepository, conn: FakeConnection
+) -> None:
+    conn.fetchval_result = "previoushash123"
+    row_hash = await repo.insert_next_grade(
+        grade_id="g-2",
+        case_id="c-2",
+        reviewer_id="u-1",
+        reviewer_role="clinical_reviewer",
+        rubric_version="v1",
+        scores=_scores(),
+        notes="ok",
+        time_spent_seconds=90,
+        submitted_at=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
+    )
+    assert row_hash
+    assert len(row_hash) == 64  # SHA-256 hex
+
+    # The INSERT args include prev_hash=fetchval_result
+    insert_args = next(
+        args for q, args in conn.executed if q.strip().startswith("INSERT")
+    )
+    assert insert_args[13] == "previoushash123"  # prev_hash
+    assert insert_args[14] == row_hash
+
+
+async def test_insert_next_grade_genesis_uses_empty_prev_hash(
+    repo: GradeRepository, conn: FakeConnection
+) -> None:
+    conn.fetchval_result = None
+    await repo.insert_next_grade(
+        grade_id="g-1",
+        case_id="c-1",
+        reviewer_id="u-1",
+        reviewer_role="clinical_reviewer",
+        rubric_version="v1",
+        scores=_scores(),
+        notes="ok",
+        time_spent_seconds=90,
+        submitted_at=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
+    )
+    insert_args = next(
+        args for q, args in conn.executed if q.strip().startswith("INSERT")
+    )
+    assert insert_args[13] == ""  # prev_hash
+
+
+async def test_load_agreement_runs_inside_transaction(
+    repo: GradeRepository, conn: FakeConnection
+) -> None:
+    conn.fetch_result = []
+    window_start = datetime(2026, 4, 17, 0, 0, 0, tzinfo=timezone.utc)
+    window_end = datetime(2026, 4, 18, 0, 0, 0, tzinfo=timezone.utc)
+    await repo.load_agreement_ratings(window_start=window_start, window_end=window_end)
+    assert conn.transaction_entered == 1
 
 
 async def test_load_agreement_groups_ratings_by_case_and_dimension(

@@ -1,22 +1,30 @@
 """Grade persistence and agreement-set loading.
 
 Two responsibilities:
-  1. `insert_grade` — write a reviewer's scored case to `grades` with
-     chain-of-custody. SET LOCAL statement_timeout enforced.
-  2. `load_agreement_matrix` — pull dual-rated cases for daily Fleiss
-     kappa computation. Returns per-case × per-dimension rating lists.
+  1. `insert_next_grade` — read latest row_hash, compute new row_hash,
+     insert, all inside one SERIALIZABLE transaction per reviewer so
+     concurrent submissions cannot fork the hash chain. SET LOCAL
+     statement_timeout enforced.
+  2. `load_agreement_ratings` — pull grades in a time window grouped by
+     case then dimension for daily Fleiss kappa.
 
-We use a Protocol for the pool so unit tests can inject a fake without
-testcontainers. Integration tests (in the backend suite) exercise the
-real SQL against a seeded Postgres.
+We use Protocols for pool/connection so unit tests can inject a fake
+without testcontainers. Integration tests (landing with backend's test
+suite) exercise the real SQL against a seeded Postgres.
 """
 
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Any, Protocol
 
-from labeling.rubric import RUBRIC_DIMENSIONS, Grade, grade_to_row_dict
+from labeling.rubric import (
+    RUBRIC_DIMENSIONS,
+    RubricScores,
+    build_grade,
+    grade_to_row_dict,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,11 +53,17 @@ WHERE submitted_at >= $1 AND submitted_at < $2
 ORDER BY case_id, submitted_at;
 """
 
+# pg_advisory_xact_lock serialises concurrent writes per reviewer so the
+# latest_hash → insert read-modify-write cycle is atomic. Using hashtext
+# keeps the lock key within int4 regardless of reviewer_id length.
+_ADVISORY_LOCK_SQL = "SELECT pg_advisory_xact_lock(hashtext($1));"
+
 
 class ConnectionLike(Protocol):
     async def execute(self, query: str, *args: Any) -> Any: ...
     async def fetchval(self, query: str, *args: Any) -> Any: ...
     async def fetch(self, query: str, *args: Any) -> list[Any]: ...
+    def transaction(self, **kwargs: Any) -> Any: ...
 
 
 class PoolLike(Protocol):
@@ -63,53 +77,81 @@ class GradeRepository:
         self._pool = pool
         self._timeout_ms = statement_timeout_ms
 
-    async def latest_row_hash(self, *, reviewer_id: str) -> str:
-        """Most recent row_hash for this reviewer, or '' if they have no rows.
+    async def insert_next_grade(
+        self,
+        *,
+        grade_id: str,
+        case_id: str,
+        reviewer_id: str,
+        reviewer_role: str,
+        rubric_version: str,
+        scores: RubricScores,
+        notes: str,
+        time_spent_seconds: int,
+        submitted_at: datetime,
+    ) -> str:
+        """Atomically chain and insert a grade for `reviewer_id`.
 
-        The labeling UI chains its submissions per reviewer, so a new
-        grade's prev_hash is this function's return value. A reviewer's
-        first grade chains off the empty string (genesis).
+        Inside one transaction:
+          1. Take an advisory lock keyed on reviewer_id (serialises
+             concurrent writers by that reviewer).
+          2. Read the reviewer's most recent row_hash as prev_hash.
+          3. Compute row_hash deterministically over the payload.
+          4. INSERT.
+
+        Returns the computed row_hash. The caller can verify the chain
+        by re-running compute_row_hash over the payload.
         """
         async with self._pool.acquire() as conn:
-            await conn.execute(f"SET LOCAL statement_timeout = '{self._timeout_ms}ms'")
-            value = await conn.fetchval(_LATEST_HASH_SQL, reviewer_id)
-        if value is None:
-            return ""
-        if isinstance(value, str):
-            return value
-        raise TypeError(f"unexpected row_hash type: {type(value).__name__}")
+            async with conn.transaction():
+                await conn.execute(
+                    f"SET LOCAL statement_timeout = '{self._timeout_ms}ms'"
+                )
+                await conn.execute(_ADVISORY_LOCK_SQL, reviewer_id)
 
-    async def insert_grade(self, grade: Grade) -> None:
-        """Persist a grade. Fails closed: any error propagates."""
-        row = grade_to_row_dict(grade)
-        async with self._pool.acquire() as conn:
-            await conn.execute(f"SET LOCAL statement_timeout = '{self._timeout_ms}ms'")
-            await conn.execute(
-                _INSERT_SQL,
-                row["grade_id"],
-                row["case_id"],
-                row["reviewer_id"],
-                row["reviewer_role"],
-                row["rubric_version"],
-                row["accuracy"],
-                row["safety"],
-                row["guideline_alignment"],
-                row["local_appropriateness"],
-                row["clarity"],
-                row["notes"],
-                row["time_spent_seconds"],
-                row["submitted_at"],
-                row["prev_hash"],
-                row["row_hash"],
-            )
+                prev_hash_raw = await conn.fetchval(_LATEST_HASH_SQL, reviewer_id)
+                prev_hash = prev_hash_raw if isinstance(prev_hash_raw, str) else ""
+
+                grade = build_grade(
+                    grade_id=grade_id,
+                    case_id=case_id,
+                    reviewer_id=reviewer_id,
+                    reviewer_role=reviewer_role,
+                    rubric_version=rubric_version,
+                    scores=scores,
+                    notes=notes,
+                    time_spent_seconds=time_spent_seconds,
+                    submitted_at=submitted_at,
+                    prev_hash=prev_hash,
+                )
+                row = grade_to_row_dict(grade)
+                await conn.execute(
+                    _INSERT_SQL,
+                    row["grade_id"],
+                    row["case_id"],
+                    row["reviewer_id"],
+                    row["reviewer_role"],
+                    row["rubric_version"],
+                    row["accuracy"],
+                    row["safety"],
+                    row["guideline_alignment"],
+                    row["local_appropriateness"],
+                    row["clarity"],
+                    row["notes"],
+                    row["time_spent_seconds"],
+                    row["submitted_at"],
+                    row["prev_hash"],
+                    row["row_hash"],
+                )
         logger.info(
             "grade persisted",
             extra={
-                "grade_id": grade.grade_id,
-                "case_id": grade.case_id,
-                "reviewer_role": grade.reviewer_role,
+                "grade_id": grade_id,
+                "case_id": case_id,
+                "reviewer_role": reviewer_role,
             },
         )
+        return grade.row_hash
 
     async def load_agreement_ratings(
         self,
@@ -120,12 +162,15 @@ class GradeRepository:
         """Return ratings grouped by case then dimension for the window.
 
         Shape: `{case_id: {dimension: [{"reviewer_id": rid, "score": s}, ...]}}`.
-        The daily kappa job picks up this structure, filters to cases
-        with >= 2 raters, and computes Fleiss kappa per dimension.
+        Read-only so we still open a transaction for the SET LOCAL
+        timeout but no lock is taken.
         """
         async with self._pool.acquire() as conn:
-            await conn.execute(f"SET LOCAL statement_timeout = '{self._timeout_ms}ms'")
-            rows = await conn.fetch(_AGREEMENT_SQL, window_start, window_end)
+            async with conn.transaction():
+                await conn.execute(
+                    f"SET LOCAL statement_timeout = '{self._timeout_ms}ms'"
+                )
+                rows = await conn.fetch(_AGREEMENT_SQL, window_start, window_end)
 
         out: dict[str, dict[str, list[dict[str, int]]]] = {}
         for row in rows:
