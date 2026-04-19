@@ -224,9 +224,16 @@ def fit_histogram(
 ) -> HistogramModel:
     """Empirical per-bin accuracy. Closed-form fit.
 
-    Bins with no samples inherit the nearest-bin accuracy so the
-    model can score any confidence on test; a uniform 0.5 fallback
-    would bias toward chance on low-data bins.
+    Empty-bin policy:
+      - A bin with non-empty bins on BOTH sides: linear interpolation
+        between the two neighbours.
+      - A bin at the edge of the occupied range (empty on one side
+        only): falls back to the overall base rate `mean(correct)`
+        rather than extrapolating the nearest-bin accuracy. This is a
+        no-extrapolation model; a test-time confidence outside the
+        training coverage receives the base rate, not a confident
+        remap based on distant data.
+      - All bins empty (degenerate): 0.5 everywhere.
     """
     if n_bins <= 0:
         raise ValueError("n_bins must be > 0")
@@ -246,41 +253,46 @@ def fit_histogram(
     for bucket in buckets:
         accs.append(sum(1 for r in bucket if r) / len(bucket) if bucket else None)
 
-    # Fill empty bins by linear interpolation between neighbours;
-    # leading/trailing empties inherit the first/last non-empty.
-    filled = _interpolate_empty(accs)
+    # Base rate for edge-fallback. Empty dataset → 0.5.
+    base_rate = sum(1 for r in correct if r) / len(correct) if correct else 0.5
+    filled = _interpolate_empty(accs, base_rate=base_rate)
     return HistogramModel(edges=edges, accuracies=tuple(filled))
 
 
-def _interpolate_empty(vals: list[float | None]) -> list[float]:
-    """Linear-interpolate None entries; fallback to 0.5 if all None."""
+def _interpolate_empty(
+    vals: list[float | None], *, base_rate: float = 0.5
+) -> list[float]:
+    """Linear-interpolate None entries between non-empty neighbours.
+
+    Edge behaviour: bins with no non-empty bin on one side (leading
+    or trailing empties) fall back to `base_rate` — the overall mean
+    accuracy of the training data. This is a no-extrapolation policy:
+    a test-time confidence outside the training coverage is NOT
+    remapped to the nearest occupied bin's accuracy.
+    All-None (degenerate empty training data) returns [base_rate] * n.
+    """
     n = len(vals)
-    # Collect non-empty (index, value) pairs so subsequent lookups don't
-    # need to re-narrow Optional[float] to float via assert (bandit B101).
     non_empty: list[tuple[int, float]] = [
         (i, v) for i, v in enumerate(vals) if v is not None
     ]
     if not non_empty:
-        return [0.5] * n
+        return [base_rate] * n
     out: list[float] = []
     for i, v in enumerate(vals):
         if v is not None:
             out.append(v)
             continue
-        # Nearest non-empty to the left and right.
         left_matches = [(j, vj) for j, vj in non_empty if j < i]
         right_matches = [(j, vj) for j, vj in non_empty if j > i]
         left = left_matches[-1] if left_matches else None
         right = right_matches[0] if right_matches else None
-        if left is None and right is not None:
-            out.append(right[1])
-        elif right is None and left is not None:
-            out.append(left[1])
-        elif left is not None and right is not None:
+        if left is not None and right is not None:
+            # Both neighbours occupied → linear interpolation.
             w = (i - left[0]) / (right[0] - left[0])
             out.append((1 - w) * left[1] + w * right[1])
         else:
-            out.append(0.5)
+            # Edge-of-coverage fallback: do NOT extrapolate.
+            out.append(base_rate)
     return out
 
 
