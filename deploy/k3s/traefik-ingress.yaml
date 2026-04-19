@@ -1,0 +1,90 @@
+# Traefik configuration for afya-sahihi.aku.edu.
+#
+# k3s ships Traefik built-in. We need two additions on top of the
+# defaults:
+#   1. An IngressRoute for the root host that terminates TLS using the
+#      pre-provisioned cluster certificate (SealedSecret
+#      afya-sahihi-tls) and routes to the gateway Service.
+#   2. A shared OIDC ForwardAuth middleware (afya-sahihi-oidc-senior)
+#      that Phoenix and Grafana reference. The middleware chains to
+#      oauth2-proxy running as a sidecar; the proxy's Service and
+#      SealedSecret are out of this PR's scope (wired with the
+#      gateway's #34 container build).
+
+apiVersion: traefik.io/v1alpha1
+kind: TLSOption
+metadata:
+  name: afya-sahihi-default
+  namespace: afya-sahihi
+spec:
+  minVersion: VersionTLS12
+  cipherSuites:
+    - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+    - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+    - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+    - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+  sniStrict: true
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: afya-sahihi-oidc-senior
+  namespace: afya-sahihi
+spec:
+  # ForwardAuth calls oauth2-proxy, which handles the OIDC flow and
+  # sets X-Forwarded-Claims on the response. The proxy's Service lands
+  # with issue #34. Until then, this middleware is referenced but
+  # non-functional; attaching it to a route before #34 ships would
+  # fail-open (Traefik default when ForwardAuth target is unreachable
+  # depends on configuration — see below).
+  forwardAuth:
+    address: http://oauth2-proxy.afya-sahihi.svc.cluster.local:4180/oauth2/auth
+    trustForwardHeader: true
+    authResponseHeaders:
+      - X-Forwarded-User
+      - X-Forwarded-Email
+      - X-Forwarded-Claims
+    # Timeout must be shorter than Traefik's upstream read timeout so a
+    # slow IdP doesn't stack requests against the upstream.
+    # (Traefik's default ForwardAuth TLS config is unrelated; we are
+    # not using TLS to oauth2-proxy because it runs in-cluster.)
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-api-prefix
+  namespace: afya-sahihi
+spec:
+  stripPrefix:
+    prefixes: ["/api"]
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: afya-sahihi-gateway
+  namespace: afya-sahihi
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: afya-sahihi
+spec:
+  entryPoints: [websecure]
+  routes:
+    # /api/* → gateway (OIDC enforced by the gateway itself via
+    # verify_oidc_token, not by Traefik, because the gateway needs the
+    # raw bearer token to scope user-id-based rate limiting).
+    - match: Host(`afya-sahihi.aku.edu`) && PathPrefix(`/api`)
+      kind: Rule
+      services:
+        - name: gateway
+          port: 8080
+    # /grafana/* → Grafana with its own OIDC (handled in Grafana).
+    - match: Host(`afya-sahihi.aku.edu`) && PathPrefix(`/grafana`)
+      kind: Rule
+      services:
+        - name: grafana
+          namespace: observability
+          port: 3000
+  tls:
+    secretName: afya-sahihi-tls  # pragma: allowlist secret
+    options:
+      name: afya-sahihi-default

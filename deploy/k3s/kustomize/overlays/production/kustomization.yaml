@@ -1,0 +1,30 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: afya-sahihi
+
+resources:
+  - ../../base
+
+patches:
+  # Production runs 3 gateway replicas. Dev/staging run 1 to save node
+  # resources.
+  - target: { kind: Deployment, name: gateway }
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 3
+  # Sample 20% of traces in production to cap Tempo storage cost.
+  - target: { kind: ConfigMap, name: gateway-config }
+    patch: |-
+      - op: replace
+        path: /data/OTEL_TRACES_SAMPLER_RATIO
+        value: "0.2"
+      - op: replace
+        path: /data/DEPLOYMENT_ENV
+        value: production
+
+configMapGenerator:
+  - name: afya-sahihi-env
+    literals:
+      - DEPLOYMENT_ENV=production
