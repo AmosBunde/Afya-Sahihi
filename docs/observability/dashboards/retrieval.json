@@ -1,0 +1,64 @@
+{
+  "title": "Afya Sahihi — Retrieval",
+  "uid": "afya-retrieval",
+  "tags": ["afya-sahihi", "retrieval"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "title": "Top-1 similarity (distribution)",
+      "type": "heatmap",
+      "datasource": "Prometheus",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum by (le) (rate(afya_sahihi_retrieval_top1_similarity_bucket[5m]))",
+          "format": "heatmap"
+        }
+      ]
+    },
+    {
+      "title": "Mean prediction-set size",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "avg by (stratum) (afya_sahihi_conformal_set_size)",
+          "legendFormat": "{{stratum}}"
+        }
+      ]
+    },
+    {
+      "title": "Chunks returned per query",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(afya_sahihi_retrieval_n_chunks_bucket[5m])))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(afya_sahihi_retrieval_n_chunks_bucket[5m])))",
+          "legendFormat": "p95"
+        }
+      ]
+    },
+    {
+      "title": "RRF fusion latency P95 (ms)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(afya_sahihi_retrieval_fusion_latency_seconds_bucket[5m]))) * 1000",
+          "legendFormat": "p95"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ms" } }
+    }
+  ]
+}
