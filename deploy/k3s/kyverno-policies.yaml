@@ -80,10 +80,15 @@ spec:
                   app.kubernetes.io/name: promtail
       validate:
         message: "hostPath volumes are not permitted (node-exporter / promtail exempted)."
-        pattern:
-          spec:
-            =(volumes):
-              - X(hostPath): "null"
+        # JMESPath over request.object counts the number of volumes with
+        # a hostPath key; if that count > 0 the request is denied. The
+        # `|| \`[]\`` fallback handles Pods with no volumes at all.
+        deny:
+          conditions:
+            all:
+              - key: "{{ request.object.spec.volumes[?hostPath] || `[]` | length(@) }}"
+                operator: GreaterThan
+                value: 0
 ---
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
