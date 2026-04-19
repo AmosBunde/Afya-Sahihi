@@ -176,6 +176,28 @@ data:
     # Until M8 deploys the gateway container, the http.* rules evaluate
     # to empty vectors — alerts do not fire, which is safe but silent.
     groups:
+      # A single always-firing synthetic alert so we can verify the
+      # alert -> Alertmanager -> receiver pipeline end-to-end without
+      # waiting for a real incident. Routed to the `deadman` receiver
+      # in 45-alertmanager.yaml so it does NOT page. Presence of the
+      # alert in `/api/v1/alerts` is what smoke tests assert.
+      - name: afya-sahihi.synthetic
+        rules:
+          - alert: AlwaysFiring
+            expr: vector(1)
+            for: 0m
+            labels:
+              severity: deadman
+              team: afya-sahihi
+            annotations:
+              summary: "Deadman: alert pipeline heartbeat"
+              description: |
+                This alert ALWAYS fires. Its absence in Alertmanager
+                means alert routing is broken (Prometheus can't reach
+                Alertmanager, or the rule group failed to load). The
+                `deadman` receiver swallows it — no pager, no Slack.
+              runbook_url: https://github.com/AmosBunde/Afya-Sahihi/blob/main/docs/runbooks/observability.md
+
       - name: afya-sahihi.alerts
         rules:
           - alert: HighErrorRate
