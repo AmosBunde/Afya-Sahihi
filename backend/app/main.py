@@ -27,6 +27,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Startup: build pool, Redis, orchestrator. Shutdown: drain + close."""
     settings = app.state.settings
 
+    # Tracing — install before any other client so their spans attach
+    # to the right provider. instrument_httpx / instrument_asyncpg
+    # must be called before the first client is constructed.
+    from app.observability.instrumentation import (
+        instrument_asyncpg,
+        instrument_fastapi,
+        instrument_httpx,
+    )
+    from app.observability.tracing import configure_tracing, shutdown_tracing
+
+    configure_tracing(settings=settings)
+    instrument_fastapi(app)
+    instrument_httpx()
+    instrument_asyncpg()
+
     # Postgres pool
     import asyncpg
 
@@ -90,6 +105,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if redis_client:
         await redis_client.aclose()
     await pool.close()
+    shutdown_tracing()
     logger.info("gateway stopped")
 
 

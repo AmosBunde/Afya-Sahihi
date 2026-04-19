@@ -1,0 +1,255 @@
+# OTel Collector as a DaemonSet.
+#
+# Every node runs one Collector; workload pods export via the
+# host-local Collector (OTLP gRPC on 4317 / HTTP on 4318) so a single
+# Tempo outage does not backpressure the request path. The Collector
+# runs the Batch processor + a memory_limiter before fanning out to
+# Tempo (traces), Prometheus remote-write (span metrics), Loki (logs),
+# and Phoenix (LLM spans). Prometheus and Loki wiring lands with
+# issue #32; Phoenix with #31 — stubbed here so the pipeline shape is
+# correct end-to-end.
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-collector
+  namespace: observability
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otel-collector
+rules:
+  # k8sattributes processor needs read on pods/namespaces/nodes to
+  # enrich spans with kubernetes metadata. No write permissions.
+  - apiGroups: [""]
+    resources: ["pods", "namespaces", "nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-collector
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: otel-collector
+subjects:
+  - kind: ServiceAccount
+    name: otel-collector
+    namespace: observability
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  namespace: observability
+data:
+  collector.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+            max_recv_msg_size_mib: 16
+          http:
+            endpoint: 0.0.0.0:4318
+
+    processors:
+      # Reject spans older than 5 minutes — stale spans bloat the queue
+      # and almost always indicate a clock-skew or replay issue we want
+      # to notice, not silently ingest.
+      memory_limiter:
+        check_interval: 2s
+        limit_mib: 800
+        spike_limit_mib: 200
+      batch:
+        send_batch_size: 512
+        timeout: 5s
+        send_batch_max_size: 1024
+      # Drop query_text and anything that looks like PHI; application
+      # code MUST NOT set these, but defence in depth.
+      attributes:
+        actions:
+          - key: afya_sahihi.query.text
+            action: delete
+          - key: http.request.body
+            action: delete
+          - key: db.statement
+            action: delete  # raw SQL may contain parameterised PHI
+      k8sattributes:
+        auth_type: serviceAccount
+        passthrough: false
+        extract:
+          metadata:
+            - k8s.namespace.name
+            - k8s.pod.name
+            - k8s.node.name
+            - k8s.deployment.name
+        pod_association:
+          - sources:
+              - from: resource_attribute
+                name: k8s.pod.ip
+          - sources:
+              - from: connection
+
+    exporters:
+      otlp/tempo:
+        endpoint: tempo.observability.svc.cluster.local:4317
+        tls:
+          insecure: true
+        sending_queue:
+          enabled: true
+          queue_size: 5000
+      # Span metrics (latency, error rate) go to Prometheus via
+      # remote-write. Landing with issue #32 — pipeline shape defined
+      # here so the Collector config is stable.
+      prometheusremotewrite:
+        endpoint: http://prometheus.observability.svc.cluster.local:9090/api/v1/write
+        tls:
+          insecure: true
+        # Skip if Prometheus is unreachable — the pipeline drops to
+        # tempo-only rather than blocking the whole Collector.
+        retry_on_failure:
+          enabled: false
+      # LLM-specific spans (those with a span.kind=LLM marker) fan to
+      # Phoenix. Stubbed until issue #31.
+      otlp/phoenix:
+        endpoint: phoenix.observability.svc.cluster.local:6007
+        tls:
+          insecure: true
+        retry_on_failure:
+          enabled: false
+
+    service:
+      telemetry:
+        logs:
+          level: info
+        metrics:
+          address: 0.0.0.0:8888
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, k8sattributes, attributes, batch]
+          exporters: [otlp/tempo, otlp/phoenix]
+        metrics:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [prometheusremotewrite]
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: otel-collector
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: otel-collector
+    app.kubernetes.io/part-of: afya-sahihi
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: otel-collector
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: otel-collector
+    spec:
+      serviceAccountName: otel-collector
+      hostNetwork: false
+      tolerations:
+        - operator: Exists
+          effect: NoSchedule
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: otel-collector
+          image: otel/opentelemetry-collector-contrib:0.100.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - --config=/etc/otel/collector.yaml
+          env:
+            - name: K8S_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: K8S_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: GOMEMLIMIT
+              value: "900MiB"
+          ports:
+            - name: otlp-grpc
+              containerPort: 4317
+              hostPort: 4317
+              protocol: TCP
+            - name: otlp-http
+              containerPort: 4318
+              hostPort: 4318
+              protocol: TCP
+            - name: metrics
+              containerPort: 8888
+              protocol: TCP
+          resources:
+            requests:
+              cpu: "100m"
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 13133
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 13133
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otel
+      volumes:
+        - name: config
+          configMap:
+            name: otel-collector-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: otel-collector
+    app.kubernetes.io/part-of: afya-sahihi
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: otel-collector
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: otlp-grpc
+      protocol: TCP
+    - name: otlp-http
+      port: 4318
+      targetPort: otlp-http
+      protocol: TCP
