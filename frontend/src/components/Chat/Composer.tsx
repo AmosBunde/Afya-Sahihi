@@ -45,7 +45,6 @@ export function Composer({ onSend, disabled = false }: Props) {
         rows={2}
         disabled={disabled}
         maxLength={4000}
-        aria-describedby="composer-hint"
         className="flex-1 resize-none rounded-md border border-slate-300 bg-white p-2 text-sm text-slate-900 focus:border-clinical-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
       />
       <button
@@ -55,9 +54,6 @@ export function Composer({ onSend, disabled = false }: Props) {
       >
         {disabled ? t("chat.sending") : t("chat.send")}
       </button>
-      <span id="composer-hint" className="sr-only">
-        {t("chat.placeholder")}
-      </span>
     </form>
   );
 }

@@ -25,7 +25,6 @@ export function Message({ message }: Props) {
           ? "self-end bg-clinical-600 text-white"
           : "self-start bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-slate-100",
       )}
-      aria-live={message.status === "streaming" ? "polite" : undefined}
       aria-label={isUser ? undefined : t("a11y.newMessage")}
     >
       <p className="whitespace-pre-wrap break-words">
