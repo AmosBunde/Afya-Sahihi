@@ -59,19 +59,31 @@ else
 fi
 
 # --- 3. Grafana dashboards ---------------------------------------------
+#
+# We check the ConfigMap content, not Grafana's API. Grafana has OIDC
+# enabled with no anonymous viewer, so an in-pod curl without a token
+# would 401 on a healthy system. The ConfigMap is what Grafana reads
+# on startup; if the seven dashboards are in there, the provisioner
+# picks them up within 30s.
 
-echo "[3/6] checking Grafana dashboards"
-grafana_pod="$(kubectl -n "$NAMESPACE" get pods -l app.kubernetes.io/name=grafana -o jsonpath='{.items[0].metadata.name}')"
-expected_dashboards=(red llm retrieval conformal eval gpu infrastructure)
-for uid in "${expected_dashboards[@]}"; do
-  if kubectl -n "$NAMESPACE" exec "$grafana_pod" -- \
-    wget -qO- "http://localhost:3000/api/dashboards/uid/afya-$uid" 2>/dev/null \
-    | grep -q '"title"'; then
-    ok "Grafana dashboard afya-$uid loaded"
-  else
-    bad "Grafana dashboard afya-$uid NOT loaded"
-  fi
-done
+echo "[3/6] checking grafana-dashboards-json ConfigMap has 7 dashboards"
+cm_data="$(kubectl -n "$NAMESPACE" get configmap grafana-dashboards-json -o jsonpath='{.data}' 2>/dev/null || echo '')"
+if [ -z "$cm_data" ]; then
+  bad "grafana-dashboards-json ConfigMap missing or empty — run scripts/observability/build_dashboards_configmap.sh"
+else
+  expected_dashboards=(red llm retrieval conformal eval gpu infrastructure)
+  for uid in "${expected_dashboards[@]}"; do
+    # Each dashboard JSON starts with `"title":"Afya Sahihi — ..."`
+    # and carries its own uid. We look for the uid string inside the
+    # ConfigMap data map. Matching the uid rather than title avoids
+    # false positives from README entries.
+    if echo "$cm_data" | grep -q "\"afya-$uid\""; then
+      ok "Grafana dashboard afya-$uid present in ConfigMap"
+    else
+      bad "Grafana dashboard afya-$uid NOT in ConfigMap"
+    fi
+  done
+fi
 
 # --- 4. Alertmanager synthetic deadman alert ---------------------------
 

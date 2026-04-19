@@ -153,6 +153,31 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
+  name: allow-prometheus-scrape-afya-sahihi
+  namespace: observability
+  labels:
+    app.kubernetes.io/part-of: afya-sahihi
+spec:
+  # Prometheus scrapes every pod in afya-sahihi that annotates
+  # prometheus.io/scrape=true (gateway, retrieval, conformal, audit,
+  # prefilter, labeling, eval-runner, al-scheduler). Without this
+  # egress rule, scrape targets show as DOWN on CNIs that enforce
+  # NetworkPolicy (Calico, Cilium). The default k3s flannel ignores
+  # policies and would scrape anyway — but we ship the correct rule
+  # so compliant clusters work.
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: afya-sahihi
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
   name: allow-grafana-from-traefik
   namespace: observability
   labels:
