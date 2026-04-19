@@ -1,0 +1,27 @@
+[project]
+name = "afya-sahihi-paper-p2"
+version = "0.0.1"
+description = "Paper P2: adaptive conformal prediction for RAG under covariate shift."
+requires-python = "==3.12.*"
+license = { text = "Apache-2.0" }
+
+# Zero runtime deps. Adaptive/weighted/mondrian CP + synthetic shift
+# generator are pure stdlib. Figures regenerate on a fresh VM with
+# no pip install — same discipline as Paper P1 (#38).
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.3.3",
+    "ruff==0.6.9",
+]
+
+[build-system]
+requires = ["hatchling>=1.25.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
