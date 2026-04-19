@@ -1,0 +1,226 @@
+# Static frontend bundle, served by nginx behind Traefik.
+#
+# The image is built by the container pipeline (M8 sibling issue):
+#   1. `npm run build` produces dist/ (static assets).
+#   2. Dockerfile COPYs dist/ into nginx:alpine at /usr/share/nginx/html.
+#   3. nginx serves /, with gzip + brotli + 30d immutable cache on hashed
+#      assets, and falls back to index.html for SPA routes.
+#
+# Traffic flow: afya-sahihi.aku.edu (Traefik IngressRoute) → this
+# Service on :80. The /api and /grafana paths are routed by their
+# respective IngressRoute rules before hitting this catch-all.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frontend-config
+  namespace: afya-sahihi
+  labels:
+    app.kubernetes.io/name: frontend
+    app.kubernetes.io/part-of: afya-sahihi
+data:
+  SERVICE_NAME: afya-sahihi-frontend
+  NGINX_WORKER_PROCESSES: auto
+  NGINX_WORKER_CONNECTIONS: "1024"
+  NGINX_CLIENT_MAX_BODY_SIZE: 256k
+  NGINX_GZIP: "on"
+  NGINX_BROTLI: "on"
+  NGINX_CACHE_TTL: 30d
+  NGINX_SECURITY_HEADERS: "true"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: afya-sahihi
+  labels:
+    app.kubernetes.io/name: frontend
+    app.kubernetes.io/part-of: afya-sahihi
+    app.kubernetes.io/component: ui
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: frontend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: frontend
+        app.kubernetes.io/part-of: afya-sahihi
+        app.kubernetes.io/component: ui
+    spec:
+      serviceAccountName: frontend
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101   # nginx:alpine default nginx user
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: frontend
+      containers:
+        - name: frontend
+          image: harbor.aku.edu/afya-sahihi/frontend:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: frontend-config
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          volumeMounts:
+            - name: cache
+              mountPath: /var/cache/nginx
+            - name: run
+              mountPath: /var/run
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: cache
+          emptyDir: { sizeLimit: 100Mi }
+        - name: run
+          emptyDir: { sizeLimit: 50Mi }
+        - name: tmp
+          emptyDir: { sizeLimit: 50Mi }
+      terminationGracePeriodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: afya-sahihi
+  labels:
+    app.kubernetes.io/name: frontend
+    app.kubernetes.io/part-of: afya-sahihi
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: frontend
+  namespace: afya-sahihi
+automountServiceAccountToken: false
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: frontend
+  namespace: afya-sahihi
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: frontend
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: frontend
+  namespace: afya-sahihi
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: frontend
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 70 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: frontend
+  namespace: afya-sahihi
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: frontend
+  policyTypes: [Ingress, Egress]
+  ingress:
+    # Traefik is the only ingress source.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+      ports:
+        - port: 8080
+          protocol: TCP
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: frontend
+  namespace: afya-sahihi
+  labels:
+    app.kubernetes.io/name: frontend
+    app.kubernetes.io/part-of: afya-sahihi
+spec:
+  entryPoints: [websecure]
+  # Lower priority than the /api and /grafana routes so the SPA serves
+  # only the paths those more-specific rules don't claim.
+  routes:
+    - match: Host(`afya-sahihi.aku.edu`)
+      kind: Rule
+      priority: 1
+      services:
+        - name: frontend
+          port: 80
+  tls:
+    secretName: afya-sahihi-tls  # pragma: allowlist secret
+    options:
+      name: afya-sahihi-default
