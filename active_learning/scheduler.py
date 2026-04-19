@@ -100,11 +100,17 @@ async def run_round(
     )
 
     # RNG used for acquisition-function scoring reproducibility (Paper P3
-    # replays). NOT security-sensitive — arm assignment uses SHA-256 via
-    # active_learning.assignment.
-    effective_seed = (
-        rng_seed if rng_seed is not None else hash(f"{seed}|{week}") & 0xFFFFFFFF
-    )
+    # replays). Python's built-in hash() is randomised per-process (PEP
+    # 456), so we can't use it for a stable seed — take the first 4
+    # bytes of SHA-256 over (seed, week) instead. NOT security-sensitive;
+    # arm assignment uses SHA-256 directly via active_learning.assignment.
+    import hashlib
+
+    if rng_seed is None:
+        digest = hashlib.sha256(f"{seed}|{week}".encode("utf-8")).digest()
+        effective_seed = int.from_bytes(digest[:4], "big", signed=False)
+    else:
+        effective_seed = rng_seed
     rng = random.Random(effective_seed)  # nosec B311
 
     fn = resolve_acquisition(acquisition_function_name)
