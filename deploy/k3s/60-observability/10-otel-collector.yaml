@@ -101,6 +101,21 @@ data:
                 name: k8s.pod.ip
           - sources:
               - from: connection
+      # Route LLM spans (openinference.span.kind=LLM) to Phoenix only;
+      # everything else goes to Tempo only. Phoenix's UI becomes
+      # unusable if it ingests every gateway/retrieval/conformal span,
+      # and Tempo's service-graph loses fidelity when LLM token events
+      # bloat its trace storage. The filter processor drops spans the
+      # downstream pipeline should not see.
+      filter/llm_only:
+        traces:
+          span:
+            # Keep only spans that declared themselves LLM spans.
+            - attributes["openinference.span.kind"] != "LLM"
+      filter/non_llm_only:
+        traces:
+          span:
+            - attributes["openinference.span.kind"] == "LLM"
 
     exporters:
       otlp/tempo:
@@ -110,6 +125,11 @@ data:
         sending_queue:
           enabled: true
           queue_size: 5000
+        retry_on_failure:
+          enabled: true
+          initial_interval: 5s
+          max_interval: 30s
+          max_elapsed_time: 300s
       # Span metrics (latency, error rate) go to Prometheus via
       # remote-write. Landing with issue #32 — pipeline shape defined
       # here so the Collector config is stable.
@@ -121,14 +141,21 @@ data:
         # tempo-only rather than blocking the whole Collector.
         retry_on_failure:
           enabled: false
-      # LLM-specific spans (those with a span.kind=LLM marker) fan to
-      # Phoenix. Stubbed until issue #31.
+      # LLM-specific spans (openinference.span.kind=LLM) fan to
+      # Phoenix. The filter/non_llm_only processor drops everything
+      # else before this exporter is reached.
       otlp/phoenix:
         endpoint: phoenix.observability.svc.cluster.local:6007
         tls:
           insecure: true
+        sending_queue:
+          enabled: true
+          queue_size: 2000
         retry_on_failure:
-          enabled: false
+          enabled: true
+          initial_interval: 5s
+          max_interval: 30s
+          max_elapsed_time: 300s
 
     service:
       telemetry:
@@ -137,10 +164,28 @@ data:
         metrics:
           address: 0.0.0.0:8888
       pipelines:
-        traces:
+        # Tempo trace pipeline: everything EXCEPT LLM spans (which
+        # would bloat Tempo's storage with per-token events).
+        traces/tempo:
           receivers: [otlp]
-          processors: [memory_limiter, k8sattributes, attributes, batch]
-          exporters: [otlp/tempo, otlp/phoenix]
+          processors:
+            - memory_limiter
+            - k8sattributes
+            - attributes
+            - filter/llm_only
+            - batch
+          exporters: [otlp/tempo]
+        # Phoenix pipeline: ONLY LLM spans, shape preserved (no
+        # attribute scrubbing — Phoenix needs output.value to display
+        # completions and token events for calibration review).
+        traces/phoenix:
+          receivers: [otlp]
+          processors:
+            - memory_limiter
+            - k8sattributes
+            - filter/non_llm_only
+            - batch
+          exporters: [otlp/phoenix]
         # metrics pipeline is deferred to issue #32 (Prometheus stack).
         # The prometheusremotewrite exporter config above stays wired
         # so #32 only needs to add one pipeline entry and re-enable

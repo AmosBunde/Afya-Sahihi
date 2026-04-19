@@ -1,0 +1,220 @@
+# Arize Phoenix — LLM-specific span inspection.
+#
+# Single Deployment fronted by a ClusterIP Service and a Traefik
+# IngressRoute at /phoenix. Phoenix's Postgres backend lives in the
+# data-plane Postgres under a dedicated `phoenix` database (see
+# PHOENIX_STORAGE_URL in env/observability.env); credentials via
+# SealedSecret afya-sahihi-phoenix-db.
+#
+# Phoenix's UI is OIDC-protected by the Traefik ForwardAuth middleware
+# that the gateway already uses. The role gate is narrower:
+# `clinical_reviewer` alone is not sufficient because token-level
+# logprobs reveal generation internals — only `senior_clinician` and
+# `ops` may view.
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: phoenix
+  namespace: observability
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: phoenix-env
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: phoenix
+    app.kubernetes.io/part-of: afya-sahihi
+data:
+  PHOENIX_LOG_LEVEL: info
+  PHOENIX_WORKING_DIR: /srv/phoenix
+  # Phoenix binds the OTLP gRPC receiver on PHOENIX_GRPC_PORT and
+  # serves the UI + REST on PHOENIX_LISTEN_PORT.
+  PHOENIX_GRPC_PORT: "6007"
+  PHOENIX_PORT: "6006"
+  PHOENIX_HOST: 0.0.0.0
+  # Disable anonymous telemetry — clinical data must not phone home.
+  PHOENIX_ENABLE_TELEMETRY: "false"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: phoenix
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: phoenix
+    app.kubernetes.io/component: llm-observability
+    app.kubernetes.io/part-of: afya-sahihi
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate   # Phoenix holds a filesystem lock on working_dir
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: phoenix
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: phoenix
+    spec:
+      serviceAccountName: phoenix
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10002
+        runAsGroup: 10002
+        fsGroup: 10002
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: phoenix
+          image: arizephoenix/phoenix:version-4.30.0
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: phoenix-env
+          env:
+            - name: PHOENIX_SQL_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: afya-sahihi-phoenix-db
+                  key: url
+          ports:
+            - name: http
+              containerPort: 6006
+            - name: otlp-grpc
+              containerPort: 6007
+          resources:
+            requests:
+              cpu: "200m"
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 6006
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 6006
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: working-dir
+              mountPath: /srv/phoenix
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: working-dir
+          persistentVolumeClaim:
+            claimName: phoenix-working-dir
+        - name: tmp
+          emptyDir:
+            sizeLimit: 500Mi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: phoenix-working-dir
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: phoenix
+    app.kubernetes.io/part-of: afya-sahihi
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: phoenix
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: phoenix
+    app.kubernetes.io/part-of: afya-sahihi
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: phoenix
+  ports:
+    - name: http
+      port: 6006
+      targetPort: http
+    - name: otlp-grpc
+      port: 6007
+      targetPort: otlp-grpc
+---
+# NetworkPolicy: Phoenix accepts OTLP only from the otel-collector
+# DaemonSet; UI HTTP only from the Traefik ingress in kube-system.
+# Blocks a compromised workload from scraping LLM outputs.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: phoenix-ingress
+  namespace: observability
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: phoenix
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otel-collector
+      ports:
+        - port: 6007
+          protocol: TCP
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 6006
+          protocol: TCP
+---
+# Traefik IngressRoute mounting Phoenix at /phoenix with OIDC ForwardAuth.
+# The ForwardAuth middleware `afya-sahihi-oidc-senior` is defined in the
+# gateway stack and enforces the senior_clinician/ops role gate.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: phoenix
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: phoenix
+    app.kubernetes.io/part-of: afya-sahihi
+spec:
+  entryPoints: [websecure]
+  routes:
+    - match: Host(`afya-sahihi.aku.edu`) && PathPrefix(`/phoenix`)
+      kind: Rule
+      middlewares:
+        - name: afya-sahihi-oidc-senior
+          namespace: afya-sahihi
+        - name: strip-phoenix-prefix
+      services:
+        - name: phoenix
+          port: 6006
+  tls:
+    secretName: afya-sahihi-tls  # pragma: allowlist secret
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-phoenix-prefix
+  namespace: observability
+spec:
+  stripPrefix:
+    prefixes: ["/phoenix"]
