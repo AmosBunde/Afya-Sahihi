@@ -20,39 +20,49 @@ is closed; the runbook will be updated in the same PR that lands each step.
 - Target hosts provisioned per `deploy/systemd/` (see issue #33 for the
   preflight automation; until then, the checks in §1 are performed manually).
 
-## 1. Verify prerequisites (**Scheduled**, issue #33)
+## 1. Verify prerequisites (**Today**)
 
-The `deploy/systemd/bootstrap/preflight.sh` script is produced by issue #33
-(k3s cluster bootstrap). Until it exists, run the manual equivalent:
-
-```bash
-# kernel >= 6.1 for cgroup v2 support required by k3s + containerd
-uname -r
-
-# NVIDIA driver >= 550 for H100 (vLLM)
-nvidia-smi --query-gpu=driver_version --format=csv,noheader
-
-# At least 2 TiB free on the storage pool dedicated to Postgres + MinIO
-df -h /var/lib/rancher /var/lib/afya-sahihi
-```
-
-Stop on any failure; each check guards a downstream assumption (cgroup v2,
-GPU driver, storage layout).
-
-## 2. Bring up k3s (**Scheduled**, issue #33)
-
-Follow [ADR-0005](../adr/0005-k3s-over-full-kubernetes.md). Once issue #33
-lands, systemd units under `deploy/systemd/` install and start the k3s server
-on the control-plane host and join every worker:
+Run the preflight check on every target host. It verifies kernel (>= 6.1),
+cgroup v2, swap-off, disk headroom, required binaries, and port 6443 availability.
+Agent nodes additionally check for the join token; the GPU node checks for the
+NVIDIA driver (>= 550).
 
 ```bash
-sudo systemctl enable --now k3s-server
-# On each worker:
-sudo systemctl enable --now k3s-agent
+# On each control/worker candidate:
+sudo ./deploy/systemd/bootstrap/preflight.sh --role=server   # or --role=agent
+
+# On the GPU bare-metal host:
+sudo ./deploy/systemd/bootstrap/preflight.sh --role=gpu
 ```
 
-Verify with `kubectl get nodes`. All nodes should report `Ready` within 5
-minutes.
+Stop on any failure; each check guards a downstream assumption.
+
+## 2. Bring up k3s (**Today**)
+
+Follow [ADR-0005](../adr/0005-k3s-over-full-kubernetes.md). The installer
+pins k3s to `v1.30.5+k3s1` and writes its kubeconfig to
+`/etc/afya-sahihi/kubeconfig.yaml` for the watcher to read.
+
+```bash
+# Control node (afya-sahihi-ctrl-01):
+sudo ./deploy/systemd/bootstrap/install_k3s_server.sh
+
+# Copy /etc/afya-sahihi/secrets/k3s-token to each worker out-of-band
+# (scp via the bastion). Then on each worker:
+sudo ./deploy/systemd/bootstrap/install_k3s_agent.sh \
+  --server=https://afya-sahihi-ctrl-01.internal:6443
+```
+
+Verify with `kubectl get nodes`. All 3 should report `Ready` within 5 minutes.
+
+Install the SealedSecrets controller and its key-pair before the watcher
+starts — the watcher refuses to apply manifests with undefined CRDs:
+
+```bash
+kubectl apply -f deploy/k3s/sealed-secrets.yaml
+# One-time seed of the key-pair. See docs/runbooks/sealed-secrets-rotation.md.
+kubeseal --fetch-cert > /etc/afya-sahihi/secrets/sealed-secrets.crt
+```
 
 ## 3. Seal and apply secrets (**Scheduled**, issue #34)
 
@@ -61,18 +71,36 @@ Secrets are deployed via `SealedSecret` objects, never raw `Secret`s. The
 #34 (k3s manifests per service). Never paste an unencrypted secret into a
 commit message, issue, or chat.
 
-## 4. Apply the manifests (**Partially today**, completed by issue #34)
+## 4. Start the watcher (**Today**)
 
-The `deploy/k3s/` directory contains the namespace and gateway manifests
-today (`00-namespace.yaml`, `10-gateway.yaml`). Issue #34 lands the
-per-service manifests and the Kustomize wiring. Once issue #34 is closed,
-the full bootstrap is:
+The watcher polls the deploy repo every 60s and `kubectl apply -k` the
+environment's kustomize overlay on every new commit. This is the standing
+GitOps path — once the watcher is up, every subsequent change lands via
+`git push`, not `kubectl apply`.
 
 ```bash
-kubectl apply -k deploy/k3s/
+# On afya-sahihi-deploy-01:
+sudo ./deploy/systemd/bootstrap/install_watcher.sh
+
+# Verify it's polling:
+sudo systemctl status afya-sahihi-watcher.service
+# Journaled output is structured JSON; tail for change events:
+sudo journalctl -u afya-sahihi-watcher.service -f
 ```
 
-Expected completion: ~15 minutes for image pulls on a warm Harbor mirror.
+First-time bootstrap apply (before the watcher observes a new push) is the
+initial pull, which can take ~15 minutes for image pulls on a warm Harbor
+mirror. A manual kick is available via `sudo -u afya-sahihi-deploy
+afya-sahihi-watcher reconcile` if needed.
+
+The dashboards ConfigMap must be seeded once before Grafana starts:
+
+```bash
+scripts/observability/build_dashboards_configmap.sh | kubectl apply -f -
+```
+
+Subsequent dashboard edits flow through the watcher once the dashboard
+generator is wired into a CI job (tracked separately).
 
 ## 5. Seed the database (**Scheduled**, issues #11 and #12)
 

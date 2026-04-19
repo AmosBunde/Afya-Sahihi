@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+# Afya Sahihi GitOps watcher.
+#
+# Polls the deploy manifests repo every $GITOPS_POLL_INTERVAL_SECONDS.
+# On a new commit, runs `kubectl apply -k <overlay>` against the
+# current environment's kustomize overlay. Logs every poll/apply to
+# journald via stdout/stderr (the systemd unit redirects both).
+#
+# Designed to be killed and restarted at any time: state is the git
+# working tree + the cluster. No local cache of "last applied" beyond
+# the git SHA file at $GITOPS_STATE_FILE.
+#
+# Subcommands:
+#   run            main polling loop (called by the .service unit)
+#   reconcile      one-shot: pull, apply if changed, exit
+#   status         print current git SHA, last applied SHA, last error
+#
+# Tested by scripts/deploy/test_watcher.sh.
+
+set -euo pipefail
+
+# --- Config (env-file sourced by systemd) --------------------------------
+
+: "${GITOPS_REPO:?GITOPS_REPO must be set}"
+: "${GITOPS_BRANCH:=main}"
+: "${GITOPS_LOCAL_CHECKOUT:?GITOPS_LOCAL_CHECKOUT must be set}"
+: "${GITOPS_SSH_KEY:=}"
+: "${GITOPS_POLL_INTERVAL_SECONDS:=60}"
+: "${GITOPS_STATE_FILE:=/var/log/afya-sahihi/watcher-state}"
+: "${DEPLOYMENT_ENV:=production}"
+: "${KUBECTL_BIN:=/usr/local/bin/kubectl}"
+: "${KUBECONFIG:=/etc/afya-sahihi/kubeconfig.yaml}"
+: "${KUBECTL_APPLY_TIMEOUT:=300s}"
+: "${OVERLAY_PATH:=deploy/k3s/kustomize/overlays/${DEPLOYMENT_ENV}}"
+
+export KUBECONFIG
+
+log() {
+  # Structured JSON line so Loki's promtail pipeline can parse it.
+  printf '{"ts":"%s","level":"%s","service":"afya-sahihi-watcher","msg":"%s"%s}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" "$2" "${3:-}"
+}
+
+git_ssh() {
+  if [ -n "$GITOPS_SSH_KEY" ]; then
+    GIT_SSH_COMMAND="ssh -i $GITOPS_SSH_KEY -o UserKnownHostsFile=${GITOPS_KNOWN_HOSTS:-/dev/null} -o StrictHostKeyChecking=yes" git "$@"
+  else
+    git "$@"
+  fi
+}
+
+ensure_checkout() {
+  if [ ! -d "$GITOPS_LOCAL_CHECKOUT/.git" ]; then
+    log info "cloning repo" ",\"repo\":\"$GITOPS_REPO\""
+    mkdir -p "$(dirname "$GITOPS_LOCAL_CHECKOUT")"
+    git_ssh clone --branch "$GITOPS_BRANCH" --depth 50 "$GITOPS_REPO" "$GITOPS_LOCAL_CHECKOUT"
+  fi
+}
+
+current_sha() {
+  ( cd "$GITOPS_LOCAL_CHECKOUT" && git rev-parse HEAD )
+}
+
+last_applied_sha() {
+  [ -f "$GITOPS_STATE_FILE" ] || { echo ""; return; }
+  awk -F= '/^last_applied_sha=/ {print $2}' "$GITOPS_STATE_FILE"
+}
+
+set_last_applied_sha() {
+  mkdir -p "$(dirname "$GITOPS_STATE_FILE")"
+  printf 'last_applied_sha=%s\nlast_applied_at=%s\n' \
+    "$1" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$GITOPS_STATE_FILE"
+}
+
+fetch() {
+  ( cd "$GITOPS_LOCAL_CHECKOUT" && git_ssh fetch --depth 50 origin "$GITOPS_BRANCH" )
+  ( cd "$GITOPS_LOCAL_CHECKOUT" && git reset --hard "origin/$GITOPS_BRANCH" )
+}
+
+apply_if_changed() {
+  local head last
+  head="$(current_sha)"
+  last="$(last_applied_sha)"
+  if [ "$head" = "$last" ]; then
+    log debug "no change" ",\"sha\":\"$head\""
+    return 0
+  fi
+  log info "applying manifests" ",\"from\":\"$last\",\"to\":\"$head\",\"overlay\":\"$OVERLAY_PATH\""
+  if ! timeout "$KUBECTL_APPLY_TIMEOUT" \
+      "$KUBECTL_BIN" apply -k "$GITOPS_LOCAL_CHECKOUT/$OVERLAY_PATH"; then
+    log error "kubectl apply failed" ",\"from\":\"$last\",\"to\":\"$head\""
+    return 1
+  fi
+  set_last_applied_sha "$head"
+  log info "applied" ",\"sha\":\"$head\""
+  return 0
+}
+
+cmd_reconcile() {
+  ensure_checkout
+  fetch
+  apply_if_changed
+}
+
+cmd_run() {
+  ensure_checkout
+  log info "watcher started" ",\"interval_s\":$GITOPS_POLL_INTERVAL_SECONDS"
+  while true; do
+    if ! fetch; then
+      log warn "fetch failed; will retry" ""
+    elif ! apply_if_changed; then
+      # apply_if_changed already logged the failure; keep polling so a
+      # subsequent git push with a fix can land without manual kick.
+      :
+    fi
+    sleep "$GITOPS_POLL_INTERVAL_SECONDS"
+  done
+}
+
+cmd_status() {
+  local head last
+  head="$(current_sha 2>/dev/null || echo '<no-checkout>')"
+  last="$(last_applied_sha)"
+  printf 'repo:            %s\n' "$GITOPS_REPO"
+  printf 'branch:          %s\n' "$GITOPS_BRANCH"
+  printf 'overlay:         %s\n' "$OVERLAY_PATH"
+  printf 'head sha:        %s\n' "$head"
+  printf 'last applied:    %s\n' "${last:-<never>}"
+}
+
+case "${1:-run}" in
+  run)        cmd_run ;;
+  reconcile)  cmd_reconcile ;;
+  status)     cmd_status ;;
+  *) echo "usage: $0 {run|reconcile|status}" >&2; exit 2 ;;
+esac

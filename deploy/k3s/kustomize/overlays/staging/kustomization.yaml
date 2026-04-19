@@ -1,0 +1,29 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: afya-sahihi
+
+resources:
+  - ../../base
+
+patches:
+  - target: { kind: Deployment, name: gateway }
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 2
+  # Staging keeps 100% sampling so Tier 2 pre-deploy evals can inspect
+  # every trace without sampling noise.
+  - target: { kind: ConfigMap, name: gateway-config }
+    patch: |-
+      - op: replace
+        path: /data/OTEL_TRACES_SAMPLER_RATIO
+        value: "1.0"
+      - op: replace
+        path: /data/DEPLOYMENT_ENV
+        value: staging
+
+configMapGenerator:
+  - name: afya-sahihi-env
+    literals:
+      - DEPLOYMENT_ENV=staging
