@@ -1,0 +1,259 @@
+# Audit log writer — receives structured events from the gateway +
+# conformal + retrieval and appends to `queries_audit` with hash-chain
+# (ADR-0008 / migration 0003). Write-heavy, single-tenant Postgres.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: audit-config
+  namespace: afya-sahihi
+  labels:
+    app.kubernetes.io/name: audit
+    app.kubernetes.io/part-of: afya-sahihi
+data:
+  SERVICE_NAME: afya-sahihi-audit
+  SERVICE_PORT: "8083"
+  SERVICE_WORKERS: "2"
+  SERVICE_LOG_LEVEL: info
+  SERVICE_LOG_FORMAT: json
+  OTEL_SERVICE_NAME: afya-sahihi-audit
+  OTEL_SERVICE_NAMESPACE: afya-sahihi
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector.observability.svc.cluster.local:4317
+  OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+  OTEL_TRACES_SAMPLER_RATIO: "1.0"
+  DEPLOYMENT_ENV: dev
+  AUDIT_RETENTION_DAYS: "2555"         # 7y compliance retention
+  AUDIT_BATCH_SIZE: "50"
+  AUDIT_BATCH_TIMEOUT_MS: "500"
+  AUDIT_HASH_ALGORITHM: sha256
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: audit
+  namespace: afya-sahihi
+  labels:
+    app.kubernetes.io/name: audit
+    app.kubernetes.io/part-of: afya-sahihi
+    app.kubernetes.io/component: audit
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: audit
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: audit
+        app.kubernetes.io/part-of: afya-sahihi
+        app.kubernetes.io/component: audit
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: audit
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: audit
+      containers:
+        - name: audit
+          image: harbor.aku.edu/afya-sahihi/audit:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8083
+            - name: metrics
+              containerPort: 9090
+          envFrom:
+            - configMapRef:
+                name: audit-config
+            - secretRef:
+                name: audit-secrets
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 24
+          lifecycle:
+            preStop:
+              exec:
+                # Longer drain — audit is fire-and-forget from callers
+                # but we want in-flight inserts to flush.
+                command: ["/bin/sh", "-c", "sleep 20"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 256Mi }
+      terminationGracePeriodSeconds: 45
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: audit
+  namespace: afya-sahihi
+  labels:
+    app.kubernetes.io/name: audit
+    app.kubernetes.io/part-of: afya-sahihi
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: audit
+  ports:
+    - name: http
+      port: 8083
+      targetPort: http
+    - name: metrics
+      port: 9090
+      targetPort: metrics
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: audit
+  namespace: afya-sahihi
+automountServiceAccountToken: false
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: audit
+  namespace: afya-sahihi
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: audit
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: audit
+  namespace: afya-sahihi
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: audit
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 70 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: audit
+  namespace: afya-sahihi
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: audit
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                # gateway + conformal + retrieval all write audit
+                # events. Labeling writes grades via its own repo.
+                values: [gateway, conformal, retrieval]
+      ports:
+        - port: 8083
+          protocol: TCP
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+      ports:
+        - port: 9090
+          protocol: TCP
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    - to:
+        - ipBlock: { cidr: 10.0.0.10/32 }
+      ports:
+        - port: 5432
+          protocol: TCP
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otel-collector
+      ports:
+        - port: 4317
+          protocol: TCP
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: audit
+  namespace: afya-sahihi
+  labels:
+    app.kubernetes.io/name: audit
+    app.kubernetes.io/part-of: afya-sahihi
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: audit
+  endpoints:
+    - port: metrics
+      interval: 15s
+      path: /metrics
