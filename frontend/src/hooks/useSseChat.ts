@@ -32,10 +32,11 @@ interface UseSseChat {
 }
 
 function newId(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-  return `msg-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+  // crypto.randomUUID ships in Chrome 92+, Safari 15.4+, Firefox 95+
+  // — the three browsers issue #35 targets. No Math.random fallback:
+  // it would trip CodeQL js/insecure-randomness and every supported
+  // runtime has crypto.
+  return crypto.randomUUID();
 }
 
 export function useSseChat(): UseSseChat {
