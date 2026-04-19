@@ -48,33 +48,49 @@ COMMENT ON TABLE al_labeled_pool IS
 COMMENT ON COLUMN al_labeled_pool.arm IS
     'treatment = picked by acquisition_function; control = random.';
 COMMENT ON COLUMN al_labeled_pool.acquisition_function IS
-    'Recorded "random" for control-arm rows regardless of the week''s '
-    'configured treatment function, so the table is self-describing.';
+    'For treatment-arm rows: name of the week''s acquisition function. '
+    'For control-arm rows: ALWAYS "random" regardless of the week''s '
+    'configured treatment function. Analysts querying for a specific '
+    'treatment function MUST join on week_iso to pick up matched '
+    'control-arm rows, or use WHERE arm = ''control'' for the full '
+    'control distribution.';
 
 CREATE INDEX al_labeled_pool_week_iso ON al_labeled_pool (week_iso);
 CREATE INDEX al_labeled_pool_arm ON al_labeled_pool (arm, week_iso);
 
--- Candidate pool view. The scheduler reads this; writers populate
--- queries_audit (gateway) and eval_runs (Tier 2) independently.
--- coalesce() defaults let the view survive missing joins during
--- early-deployment windows when eval_runs is empty.
+-- Candidate pool view. Reads queries_audit (gateway-written).
+-- Columns that don't exist on queries_audit today are defaulted:
+--   token_logprobs: empty array. When #38 adds the column (or a
+--     side-table keyed on query_id) this view is rewritten then.
+--     Acquisition functions tolerate empty logprobs (entropy=0).
+--   conformal_set_size: extracted from the conformal_set JSONB via
+--     jsonb_array_length of the prediction_set array.
+--   conformal_coverage_target: pipeline constant 0.9 (ADR-0006).
+--   stratum: classified_intent is the closest existing column;
+--     maps 1:1 to Paper P3 strata (dosing/contraindication/...).
+--   truth_in_set: NULL for production rows; Tier 2 replay path (#38)
+--     will UNION-ALL rows with truth_in_set set.
 CREATE OR REPLACE VIEW al_candidate_pool_v AS
 SELECT
-    q.query_id                    AS case_id,
-    COALESCE(q.primary_category, 'general')              AS stratum,
-    COALESCE(q.token_logprobs, ARRAY[]::DOUBLE PRECISION[])
-                                  AS token_logprobs,
-    COALESCE(q.conformal_set_size, 0)                    AS conformal_set_size,
-    COALESCE(q.conformal_coverage_target, 0.9)           AS conformal_coverage_target,
-    NULL::BOOLEAN                 AS truth_in_set,
-    q.created_at                  AS ingested_at
+    q.query_id                                    AS case_id,
+    COALESCE(q.classified_intent, 'general')      AS stratum,
+    ARRAY[]::DOUBLE PRECISION[]                   AS token_logprobs,
+    COALESCE(
+        jsonb_array_length(q.conformal_set -> 'prediction_set'),
+        0
+    )                                             AS conformal_set_size,
+    0.9::DOUBLE PRECISION                         AS conformal_coverage_target,
+    NULL::BOOLEAN                                 AS truth_in_set,
+    q.created_at                                  AS ingested_at
 FROM queries_audit q
-WHERE q.conformal_set_size IS NOT NULL;
+WHERE q.conformal_set IS NOT NULL;
 
 COMMENT ON VIEW al_candidate_pool_v IS
     'Read-only candidate pool for the AL scheduler. Production cases '
     'only (truth_in_set=NULL). Tier 2 replay rows with truth_in_set '
-    'set are joined via a separate path landing with issue #38.';
+    'set are joined via a separate path landing with issue #38. '
+    'token_logprobs is empty here until #38 adds a per-query-step '
+    'logprobs column; acquisition functions tolerate empty.';
 
 GRANT SELECT              ON al_candidate_pool_v TO afya_sahihi_app;
 GRANT SELECT, INSERT      ON al_labeled_pool    TO afya_sahihi_app;
