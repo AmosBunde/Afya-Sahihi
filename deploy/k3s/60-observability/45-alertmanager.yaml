@@ -25,6 +25,13 @@ data:
       group_interval: 5m
       repeat_interval: 12h
       routes:
+        # Synthetic deadman alert: routed to a null receiver so it
+        # doesn't page. Its presence in /api/v1/alerts is the smoke
+        # test signal that routing itself works.
+        - matchers: [severity="deadman"]
+          receiver: deadman
+          group_wait: 10s
+          repeat_interval: 1h
         - matchers: [severity="page"]
           receiver: pagerduty
           continue: true
@@ -32,6 +39,8 @@ data:
           receiver: slack-warnings
 
     receivers:
+      - name: deadman
+        # Intentionally empty: Alertmanager accepts, groups, and drops.
       - name: pagerduty
         pagerduty_configs:
           - routing_key_file: /etc/alertmanager/secrets/pagerduty_key

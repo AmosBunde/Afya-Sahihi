@@ -29,6 +29,7 @@ resources:
   - ../../50-jobs/tier2-eval-cronjob.yaml
   - ../../50-jobs/labeling-kappa-cronjob.yaml
   - ../../60-observability/00-namespace.yaml
+  - ../../60-observability/05-networkpolicy.yaml
   - ../../60-observability/10-otel-collector.yaml
   - ../../60-observability/20-tempo.yaml
   - ../../60-observability/30-phoenix.yaml

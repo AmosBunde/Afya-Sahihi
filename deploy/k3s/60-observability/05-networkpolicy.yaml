@@ -1,0 +1,190 @@
+# NetworkPolicy perimeter for the observability namespace.
+#
+# Default-deny ingress + egress, then explicit allows:
+#   - Prometheus scrapes pods in observability and (via otel-collector
+#     remote-write) accepts metrics from the otel-collector DaemonSet.
+#   - otel-collector accepts OTLP gRPC/HTTP from anything in
+#     afya-sahihi (workload spans) and kube-system (node agents).
+#   - Grafana is hit only from Traefik (in kube-system) or from within
+#     observability (dashboard reloads, datasource probes).
+#   - Tempo, Phoenix, Loki, Alertmanager are all internal-only.
+#   - Egress to DNS (kube-dns in kube-system) and to the data node's
+#     S3 (MinIO :9000) and Postgres (:5432) is allowed where relevant.
+#
+# Per-pod NetworkPolicies (Phoenix already has one from #31) narrow
+# further; this policy is the perimeter catch-all.
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: observability
+  labels:
+    app.kubernetes.io/part-of: afya-sahihi
+spec:
+  # Empty podSelector = applies to every pod in the namespace.
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: observability
+  labels:
+    app.kubernetes.io/part-of: afya-sahihi
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-otlp-from-workloads
+  namespace: observability
+  labels:
+    app.kubernetes.io/part-of: afya-sahihi
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: otel-collector
+  policyTypes: [Ingress]
+  ingress:
+    # Every afya-sahihi workload exports spans.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: afya-sahihi
+      ports:
+        - port: 4317
+          protocol: TCP
+        - port: 4318
+          protocol: TCP
+    # kube-system components (e.g., Traefik's OTel plugin, if enabled)
+    # may also emit OTLP.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 4317
+          protocol: TCP
+        - port: 4318
+          protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-intra-namespace
+  namespace: observability
+  labels:
+    app.kubernetes.io/part-of: afya-sahihi
+spec:
+  # Pods in observability talk to each other (Prometheus → Tempo
+  # metrics generator, Grafana → datasources, Alertmanager → Prometheus).
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-to-data-node
+  namespace: observability
+  labels:
+    app.kubernetes.io/part-of: afya-sahihi
+spec:
+  # Tempo → MinIO (S3) :9000; postgres-exporter → Postgres :5432;
+  # Phoenix → Postgres :5432.
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values: [tempo, phoenix, postgres-exporter]
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock: { cidr: 10.0.0.10/32 }
+      ports:
+        - port: 5432
+          protocol: TCP
+        - port: 9000
+          protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-alertmanager-egress
+  namespace: observability
+  labels:
+    app.kubernetes.io/part-of: afya-sahihi
+spec:
+  # Alertmanager posts to PagerDuty (events.pagerduty.com:443) and
+  # Slack webhooks (hooks.slack.com:443). Public egress is the only
+  # leak outside the cluster and must be deliberate.
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: alertmanager
+  policyTypes: [Egress]
+  egress:
+    - ports:
+        - port: 443
+          protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-grafana-from-traefik
+  namespace: observability
+  labels:
+    app.kubernetes.io/part-of: afya-sahihi
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: grafana
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 3000
+          protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-grafana-oidc-egress
+  namespace: observability
+  labels:
+    app.kubernetes.io/part-of: afya-sahihi
+spec:
+  # Grafana reaches the OIDC provider at auth.aku.edu for token exchange.
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: grafana
+  policyTypes: [Egress]
+  egress:
+    - ports:
+        - port: 443
+          protocol: TCP
