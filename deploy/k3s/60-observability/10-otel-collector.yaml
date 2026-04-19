@@ -141,16 +141,21 @@ data:
           max_interval: 30s
           max_elapsed_time: 300s
       # Span metrics (latency, error rate) go to Prometheus via
-      # remote-write. Landing with issue #32 — pipeline shape defined
-      # here so the Collector config is stable.
+      # remote-write. Prometheus ships with #32, enabling this pipeline.
       prometheusremotewrite:
         endpoint: http://prometheus.observability.svc.cluster.local:9090/api/v1/write
         tls:
           insecure: true
-        # Skip if Prometheus is unreachable — the pipeline drops to
-        # tempo-only rather than blocking the whole Collector.
+        sending_queue:
+          enabled: true
+          queue_size: 5000
         retry_on_failure:
-          enabled: false
+          enabled: true
+          initial_interval: 5s
+          max_interval: 30s
+          max_elapsed_time: 300s
+        resource_to_telemetry_conversion:
+          enabled: true
       # LLM-specific spans (openinference.span.kind=LLM) fan to
       # Phoenix. The filter/non_llm_only processor drops everything
       # else before this exporter is reached.
@@ -200,12 +205,14 @@ data:
             - attributes/phoenix
             - batch
           exporters: [otlp/phoenix]
-        # metrics pipeline is deferred to issue #32 (Prometheus stack).
-        # The prometheusremotewrite exporter config above stays wired
-        # so #32 only needs to add one pipeline entry and re-enable
-        # retry_on_failure. Not in `service.pipelines` here so the
-        # Collector doesn't spam errors against a non-existent
-        # Prometheus endpoint.
+        # Span-derived metrics to Prometheus via remote-write. Enabled
+        # by #32. The memory_limiter + batch is sufficient; no k8s
+        # attribute enrichment because Prometheus already has the
+        # kube_pod_* series from kube-state-metrics for join time.
+        metrics:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [prometheusremotewrite]
 ---
 apiVersion: apps/v1
 kind: DaemonSet

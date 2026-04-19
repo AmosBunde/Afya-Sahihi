@@ -1,0 +1,260 @@
+# Grafana with OIDC auth + pre-provisioned datasources + dashboards.
+#
+# Dashboards live in a ConfigMap mounted at /etc/grafana/provisioning/
+# dashboards so Grafana discovers them on startup. Source of truth is
+# docs/observability/dashboards/*.json in this repo; kustomize (or the
+# watcher) mirrors those into the ConfigMap on each deploy.
+#
+# Traefik IngressRoute at /grafana is provided by the gateway ingress
+# stack in M8 — for now we expose a ClusterIP service.
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: grafana
+  namespace: observability
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: observability
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus.observability.svc.cluster.local:9090
+        isDefault: true
+        jsonData:
+          httpMethod: POST
+          exemplarTraceIdDestinations:
+            - name: trace_id
+              datasourceUid: tempo
+      - name: Tempo
+        type: tempo
+        uid: tempo
+        access: proxy
+        url: http://tempo.observability.svc.cluster.local:3200
+        jsonData:
+          tracesToLogsV2:
+            datasourceUid: loki
+            tags: [{ key: 'service.name', value: 'service' }]
+            filterByTraceID: true
+          tracesToMetrics:
+            datasourceUid: prometheus
+          serviceMap:
+            datasourceUid: prometheus
+          nodeGraph:
+            enabled: true
+      - name: Loki
+        type: loki
+        uid: loki
+        access: proxy
+        url: http://loki.observability.svc.cluster.local:3100
+        jsonData:
+          derivedFields:
+            - name: trace_id
+              matcherRegex: 'trace_id=(\w+)'
+              url: '${__value.raw}'
+              datasourceUid: tempo
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-provider
+  namespace: observability
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: afya-sahihi
+        orgId: 1
+        folder: Afya Sahihi
+        type: file
+        disableDeletion: true
+        updateIntervalSeconds: 30
+        options:
+          path: /etc/grafana/provisioning/dashboards/json
+---
+# Dashboard JSON lives in docs/observability/dashboards/*.json. Mounted
+# as a separate ConfigMap (grafana-dashboards-json) that the M8 watcher
+# mirrors from the repo. Included as an empty shim here; kustomize in
+# the M8 GitOps layer fills it.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards-json
+  namespace: observability
+  annotations:
+    afya-sahihi.aku.edu/source: docs/observability/dashboards/
+data:
+  # Populated by the watcher from docs/observability/dashboards/*.json.
+  # Empty here because a ConfigMap with embedded 500 KB of JSON gets
+  # unreviewable in diffs.
+  README.md: |
+    Dashboards are sourced from docs/observability/dashboards/ in the
+    Afya-Sahihi repo. The deploy-time watcher script mirrors every
+    *.json file in that folder into this ConfigMap before `kubectl apply`.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/part-of: afya-sahihi
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: grafana
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: grafana
+    spec:
+      serviceAccountName: grafana
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 472
+        runAsGroup: 472
+        fsGroup: 472
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: grafana
+          image: grafana/grafana:11.2.2
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: GF_SERVER_ROOT_URL
+              value: https://afya-sahihi.aku.edu/grafana
+            - name: GF_SERVER_SERVE_FROM_SUB_PATH
+              value: "true"
+            - name: GF_AUTH_GENERIC_OAUTH_ENABLED
+              value: "true"
+            - name: GF_AUTH_GENERIC_OAUTH_NAME
+              value: AKU OIDC
+            - name: GF_AUTH_GENERIC_OAUTH_ALLOW_SIGN_UP
+              value: "true"
+            - name: GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_PATH
+              # Map OIDC roles → Grafana roles. ops → Admin, senior_clinician → Editor, else Viewer.
+              value: "contains(roles[*], 'ops') && 'Admin' || contains(roles[*], 'senior_clinician') && 'Editor' || 'Viewer'"
+            - name: GF_AUTH_GENERIC_OAUTH_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: afya-sahihi-grafana-oidc
+                  key: client_id
+            - name: GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: afya-sahihi-grafana-oidc
+                  key: client_secret
+            - name: GF_AUTH_GENERIC_OAUTH_AUTH_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: afya-sahihi-oidc
+                  key: auth_url
+            - name: GF_AUTH_GENERIC_OAUTH_TOKEN_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: afya-sahihi-oidc
+                  key: token_url
+            - name: GF_AUTH_GENERIC_OAUTH_API_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: afya-sahihi-oidc
+                  key: userinfo_url
+            - name: GF_USERS_AUTO_ASSIGN_ORG_ROLE
+              value: Viewer
+            - name: GF_ANALYTICS_REPORTING_ENABLED
+              value: "false"
+            - name: GF_ANALYTICS_CHECK_FOR_UPDATES
+              value: "false"
+          ports:
+            - name: http
+              containerPort: 3000
+          resources:
+            requests:
+              cpu: "100m"
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: datasources
+              mountPath: /etc/grafana/provisioning/datasources
+            - name: dashboard-provider
+              mountPath: /etc/grafana/provisioning/dashboards
+            - name: dashboards-json
+              mountPath: /etc/grafana/provisioning/dashboards/json
+            - name: data
+              mountPath: /var/lib/grafana
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: datasources
+          configMap:
+            name: grafana-datasources
+        - name: dashboard-provider
+          configMap:
+            name: grafana-dashboard-provider
+        - name: dashboards-json
+          configMap:
+            name: grafana-dashboards-json
+        - name: data
+          persistentVolumeClaim:
+            claimName: grafana-data
+        - name: tmp
+          emptyDir:
+            sizeLimit: 100Mi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-data
+  namespace: observability
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/part-of: afya-sahihi
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: grafana
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http

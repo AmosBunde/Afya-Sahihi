@@ -1,0 +1,74 @@
+{
+  "title": "Afya Sahihi — Eval (Tier 1/2/3)",
+  "uid": "afya-eval",
+  "tags": ["afya-sahihi", "eval"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "1m",
+  "time": { "from": "now-30d", "to": "now" },
+  "panels": [
+    {
+      "title": "Tier 1 pass rate (per commit)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 8 },
+      "targets": [
+        {
+          "expr": "afya_sahihi_eval_tier1_pass_rate",
+          "legendFormat": "pass rate"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0.8,
+          "max": 1.0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 0.93 },
+              { "color": "green", "value": 0.95 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Tier 2 ECE / coverage deviation / set-size change",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "afya_sahihi_eval_tier2_ece", "legendFormat": "ECE" },
+        { "expr": "afya_sahihi_eval_tier2_coverage_deviation", "legendFormat": "cov Δ" },
+        { "expr": "afya_sahihi_eval_tier2_set_size_change_pct", "legendFormat": "size Δ %" }
+      ]
+    },
+    {
+      "title": "Tier 3 Fleiss κ per rubric dimension",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "afya_sahihi_labeling_kappa",
+          "legendFormat": "{{dimension}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 0.6 },
+              { "color": "green", "value": 0.7 }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}
