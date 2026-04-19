@@ -66,8 +66,12 @@ class ActiveLearningSettings(BaseSettings):
         # Paper P3 must be pre-registered on OSF before any labels are
         # collected. A placeholder URL at deploy time is a research
         # ethics violation; we block startup.
+        #
+        # endswith("osf.io") would accept evil.osf.io or foo-osf.io
+        # (CodeQL py/incomplete-url-substring-sanitization). Require
+        # exact host or a dot-prefixed subdomain.
         host = v.host or ""
-        if not host.endswith("osf.io"):
+        if host != "osf.io" and not host.endswith(".osf.io"):
             raise ValueError(f"al_preregistration_url must be on osf.io; got {host}")
         path = str(v.path or "")
         if path in ("/", "/xxxxx", ""):
