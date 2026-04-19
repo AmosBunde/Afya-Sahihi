@@ -116,6 +116,16 @@ data:
         traces:
           span:
             - attributes["openinference.span.kind"] == "LLM"
+      # Phoenix-side attribute scrubber. Defence in depth: even though
+      # the LLM span emitter in labeling.rubric and backend.observability.
+      # llm_spans must not set these, strip them here so a regression in
+      # application code cannot leak PHI into Phoenix.
+      attributes/phoenix:
+        actions:
+          - key: afya_sahihi.query.text
+            action: delete
+          - key: http.request.body
+            action: delete
 
     exporters:
       otlp/tempo:
@@ -165,25 +175,29 @@ data:
           address: 0.0.0.0:8888
       pipelines:
         # Tempo trace pipeline: everything EXCEPT LLM spans (which
-        # would bloat Tempo's storage with per-token events).
+        # would bloat Tempo's storage with per-token events). The
+        # filter/non_llm_only processor DROPS spans where
+        # openinference.span.kind == "LLM" so what remains is non-LLM.
         traces/tempo:
           receivers: [otlp]
           processors:
             - memory_limiter
             - k8sattributes
             - attributes
-            - filter/llm_only
+            - filter/non_llm_only
             - batch
           exporters: [otlp/tempo]
-        # Phoenix pipeline: ONLY LLM spans, shape preserved (no
-        # attribute scrubbing — Phoenix needs output.value to display
-        # completions and token events for calibration review).
+        # Phoenix pipeline: ONLY LLM spans. filter/llm_only DROPS
+        # spans where openinference.span.kind != "LLM" so what remains
+        # is LLM spans. No attribute scrubber — Phoenix needs
+        # output.value + token events for calibration review.
         traces/phoenix:
           receivers: [otlp]
           processors:
             - memory_limiter
             - k8sattributes
-            - filter/non_llm_only
+            - filter/llm_only
+            - attributes/phoenix
             - batch
           exporters: [otlp/phoenix]
         # metrics pipeline is deferred to issue #32 (Prometheus stack).
