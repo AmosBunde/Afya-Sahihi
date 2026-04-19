@@ -31,36 +31,22 @@ def test_initial_state_rejects_non_positive_gamma() -> None:
         initial_state(alpha=0.1, gamma=-0.01)
 
 
-def test_update_on_miscovered_increases_q_hat() -> None:
+def test_update_on_miscovered_decreases_q_hat() -> None:
+    # Gibbs 2021 Algorithm 1 treats q_hat as the current MISCOVERAGE
+    # TARGET (a probability), not a score threshold. A miscoverage
+    # observation tightens the target → q_hat decreases.
+    # Step: q += γ(α − miscov) = 0.05 · (0.1 − 1) = −0.045.
     state = initial_state(alpha=0.1, gamma=0.05, q_hat_0=0.5)
     new_state = update(state, covered=False)
-    # miscov=1 > alpha=0.1 → q decreases by γ(1-α)=0.045.
-    # Wait: update is q += γ(α - miscov) = 0.05 * (0.1 - 1) = -0.045.
-    # So q DECREASES when miscovered. But intuition: bigger q_hat
-    # means larger prediction set → LESS likely to miss → fewer
-    # miscovers. So miscoverage should shrink q when the SET IS LOOSER.
-    # Sign convention: here q_hat is the SCORE THRESHOLD above which
-    # a candidate is OUT. Bigger q → looser set → fewer misses.
-    # So if we miscovered, we need q BIGGER not smaller. The formula
-    # as written is for nonconformity scores where SMALLER q is
-    # looser. The Gibbs paper uses `α_t` as the miscoverage
-    # target and updates in either direction depending on score
-    # semantics. Our implementation is consistent: for the synthetic
-    # shift module's "score = |x - 0.5|" (low score = on-target),
-    # a bigger q is a LOOSER set, so we want q to INCREASE on
-    # miscoverage.
-    # Per our formula q += γ(α - miscov): miscov=1 → q -= γ(1-α).
-    # This is the convention where q is a MISCOVERAGE TARGET (a
-    # probability), not a score threshold. Gibbs 2021 defines the
-    # update for "α_t" the current miscoverage; the set uses 1 - α_t.
-    # We follow that convention.
     assert new_state.q_hat < state.q_hat
+    assert new_state.q_hat == pytest.approx(0.5 + 0.05 * (0.1 - 1))
 
 
 def test_update_on_covered_increases_q_hat() -> None:
+    # Mirror of the miscovered test: a covered observation loosens
+    # the miscoverage target → q_hat increases by γ·α = 0.005.
     state = initial_state(alpha=0.1, gamma=0.05, q_hat_0=0.5)
     new_state = update(state, covered=True)
-    # miscov=0 < alpha=0.1 → q increases by γ·α = 0.005.
     assert new_state.q_hat > state.q_hat
     assert new_state.q_hat == pytest.approx(0.5 + 0.05 * 0.1)
 
