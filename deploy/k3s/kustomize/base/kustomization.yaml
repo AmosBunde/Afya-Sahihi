@@ -22,6 +22,7 @@ resources:
   - ../../14-prefilter.yaml
   - ../../16-eval-runner.yaml
   - ../../17-al-scheduler.yaml
+  - ../../20-frontend.yaml
   - ../../20-redis.yaml
   - ../../30-labeling.yaml
   - ../../kyverno-policies.yaml

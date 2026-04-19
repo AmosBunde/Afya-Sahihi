@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Focus ring — WCAG 2.1 SC 2.4.11 requires a visible focus indicator. */
+@layer base {
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-clinical-600;
+  }
+  button:focus-visible,
+  [role="button"]:focus-visible,
+  a:focus-visible {
+    @apply ring-2 ring-clinical-600 ring-offset-2;
+  }
+}
