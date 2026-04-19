@@ -17,10 +17,14 @@ def instrument_fastapi(app: Any) -> None:
     """Add FastAPI server-span auto-instrumentation."""
     try:
         from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+        FastAPIInstrumentor.instrument_app(app)  # type: ignore[no-untyped-call]
     except ImportError:
         logger.info("fastapi instrumentation not installed; skipping")
-        return
-    FastAPIInstrumentor.instrument_app(app)  # type: ignore[no-untyped-call]
+    except Exception:
+        # Instrumentor can raise at patch-time on runtime-version mismatches.
+        # Missing tracing is preferable to a crashloop on startup.
+        logger.warning("fastapi instrumentation failed; continuing", exc_info=True)
 
 
 def instrument_httpx() -> None:
@@ -31,17 +35,21 @@ def instrument_httpx() -> None:
     """
     try:
         from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+
+        HTTPXClientInstrumentor().instrument()  # type: ignore[no-untyped-call]
     except ImportError:
         logger.info("httpx instrumentation not installed; skipping")
-        return
-    HTTPXClientInstrumentor().instrument()  # type: ignore[no-untyped-call]
+    except Exception:
+        logger.warning("httpx instrumentation failed; continuing", exc_info=True)
 
 
 def instrument_asyncpg() -> None:
     """Add asyncpg query-span auto-instrumentation."""
     try:
         from opentelemetry.instrumentation.asyncpg import AsyncPGInstrumentor
+
+        AsyncPGInstrumentor().instrument()  # type: ignore[no-untyped-call]
     except ImportError:
         logger.info("asyncpg instrumentation not installed; skipping")
-        return
-    AsyncPGInstrumentor().instrument()  # type: ignore[no-untyped-call]
+    except Exception:
+        logger.warning("asyncpg instrumentation failed; continuing", exc_info=True)
