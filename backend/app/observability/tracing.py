@@ -43,6 +43,11 @@ logger = logging.getLogger(__name__)
 # return the same handles. OTel's global set_tracer_provider refuses
 # to overwrite, so we cannot rely on trace.get_tracer_provider() after
 # a shutdown + reconfigure.
+#
+# SKILL.md §0.7 disallows mutable global state except loggers, tracers,
+# and constants. TracerProvider is process-scoped by OTel design (the
+# spec requires a single global); this variable is the sanctioned
+# tracer exception, not a new one.
 _PROVIDER: TracerProvider | None = None
 
 

@@ -70,16 +70,22 @@ data:
         send_batch_size: 512
         timeout: 5s
         send_batch_max_size: 1024
-      # Drop query_text and anything that looks like PHI; application
-      # code MUST NOT set these, but defence in depth.
+      # Strip keys that either SHOULD not have been set (application
+      # bug) or that an instrumentor might set in a way that leaks PHI.
+      # Application code MUST NOT emit these; this is defence in depth.
       attributes:
         actions:
           - key: afya_sahihi.query.text
             action: delete
           - key: http.request.body
             action: delete
+          # db.statement is dropped while we audit every asyncpg path;
+          # most instrumentors keep it parameterised (values not bound),
+          # but we've had bugs where a raw execute() with f-string SQL
+          # slipped through. Re-enable once scripts/hooks/no-fstring-sql
+          # covers the full repo.
           - key: db.statement
-            action: delete  # raw SQL may contain parameterised PHI
+            action: delete
       k8sattributes:
         auth_type: serviceAccount
         passthrough: false
@@ -135,10 +141,12 @@ data:
           receivers: [otlp]
           processors: [memory_limiter, k8sattributes, attributes, batch]
           exporters: [otlp/tempo, otlp/phoenix]
-        metrics:
-          receivers: [otlp]
-          processors: [memory_limiter, batch]
-          exporters: [prometheusremotewrite]
+        # metrics pipeline is deferred to issue #32 (Prometheus stack).
+        # The prometheusremotewrite exporter config above stays wired
+        # so #32 only needs to add one pipeline entry and re-enable
+        # retry_on_failure. Not in `service.pipelines` here so the
+        # Collector doesn't spam errors against a non-existent
+        # Prometheus endpoint.
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -242,6 +250,11 @@ metadata:
     app.kubernetes.io/part-of: afya-sahihi
 spec:
   type: ClusterIP
+  # internalTrafficPolicy: Local pins client traffic to the Collector
+  # pod on the client's own node, preserving the per-node backpressure
+  # isolation that the DaemonSet topology is designed for. Falls back
+  # to cluster-wide routing if the local pod is unhealthy.
+  internalTrafficPolicy: Local
   selector:
     app.kubernetes.io/name: otel-collector
   ports:

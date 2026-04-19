@@ -67,8 +67,8 @@ data:
           bucket: afya-sahihi-traces
           endpoint: minio.afya-sahihi.svc.cluster.local:9000
           insecure: true
-          access_key: ${env:MINIO_ACCESS_KEY}
-          secret_key: ${env:MINIO_SECRET_KEY}
+          access_key: ${MINIO_ACCESS_KEY}
+          secret_key: ${MINIO_SECRET_KEY}
         wal:
           path: /var/tempo/wal
         local:
