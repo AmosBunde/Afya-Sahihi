@@ -1,0 +1,38 @@
+[project]
+name = "afya-sahihi-active-learning"
+version = "0.0.1"
+description = "Afya Sahihi active-learning scheduler (Paper P3)."
+requires-python = "==3.12.*"
+license = { text = "Apache-2.0" }
+
+# Pure-Python core (acquisition, assignment, effect_size) has only
+# pydantic for settings. Runtime wiring (asyncpg + redis) is an extra
+# so CI can unit-test the math without a DB/Redis.
+dependencies = [
+    "pydantic==2.9.2",
+    "pydantic-settings==2.6.1",
+]
+
+[project.optional-dependencies]
+runtime = [
+    "asyncpg==0.30.0",
+    "redis==5.2.1",
+    "apscheduler==3.10.4",
+]
+dev = [
+    "pytest==8.3.3",
+    "pytest-asyncio==0.24.0",
+    "ruff==0.6.9",
+    "pyright==1.1.384",
+]
+
+[build-system]
+requires = ["hatchling>=1.25.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
