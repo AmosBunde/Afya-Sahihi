@@ -154,8 +154,9 @@ data:
           initial_interval: 5s
           max_interval: 30s
           max_elapsed_time: 300s
-        resource_to_telemetry_conversion:
-          enabled: true
+        # resource_to_telemetry_conversion was deprecated in Collector
+        # 0.100; default behavior plus k8sattributes processor gives
+        # us the same labels on exported metrics.
       # LLM-specific spans (openinference.span.kind=LLM) fan to
       # Phoenix. The filter/non_llm_only processor drops everything
       # else before this exporter is reached.

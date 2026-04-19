@@ -61,7 +61,11 @@ data:
       evaluation_interval: 15s
       external_labels:
         cluster: afya-sahihi
-        deployment_env: ${DEPLOYMENT_ENV}
+        # Hard-coded here; dev/staging overlays replace this value via
+        # kustomize. Prometheus env-var expansion is flag-gated and
+        # using it here was a foot-gun — the literal `${VAR}` landed
+        # in labels when the flag wasn't set.
+        deployment_env: production
 
     alerting:
       alertmanagers:
@@ -163,6 +167,14 @@ data:
                 )
               )
   alert-rules.yaml: |
+    # These rules reference metrics (afya_sahihi_http_requests_total,
+    # afya_sahihi_conformal_*, pg_stat_activity_count, DCGM_FI_DEV_*)
+    # that are emitted by:
+    #   - gateway's prometheus-client handler (M8 container wiring #33)
+    #   - conformal service's OTel span metrics (ADR-0010)
+    #   - postgres-exporter and DCGM exporters in 70-exporters.yaml
+    # Until M8 deploys the gateway container, the http.* rules evaluate
+    # to empty vectors — alerts do not fire, which is safe but silent.
     groups:
       - name: afya-sahihi.alerts
         rules:
@@ -281,9 +293,6 @@ spec:
             - --web.enable-lifecycle
             - --web.enable-remote-write-receiver
             - --enable-feature=exemplar-storage
-          env:
-            - name: DEPLOYMENT_ENV
-              value: production
           ports:
             - name: http
               containerPort: 9090
@@ -319,6 +328,8 @@ spec:
               mountPath: /etc/prometheus/rules
             - name: data
               mountPath: /prometheus
+            - name: tmp
+              mountPath: /tmp
       volumes:
         - name: config
           configMap:
@@ -326,6 +337,9 @@ spec:
         - name: rules
           configMap:
             name: prometheus-rules
+        - name: tmp
+          emptyDir:
+            sizeLimit: 500Mi
   volumeClaimTemplates:
     - metadata:
         name: data

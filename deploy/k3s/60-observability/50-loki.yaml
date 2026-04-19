@@ -197,10 +197,15 @@ spec:
               mountPath: /etc/loki
             - name: data
               mountPath: /loki
+            - name: tmp
+              mountPath: /tmp
       volumes:
         - name: config
           configMap:
             name: loki-config
+        - name: tmp
+          emptyDir:
+            sizeLimit: 500Mi
   volumeClaimTemplates:
     - metadata:
         name: data
