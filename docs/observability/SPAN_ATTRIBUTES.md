@@ -34,11 +34,15 @@ Orchestrator span names (the `ORCH_STEP` enum values): `prefilter`, `retrieve`, 
 
 `afya_sahihi.retrieval.n_chunks` (int), `...top1_similarity` (float 0-1), `...fusion_strategy` (enum: `rrf`, `dense_only`, etc.).
 
-## Generation (will link to Phoenix via `span.kind=LLM`)
+## Generation (routed to Phoenix via `openinference.span.kind=LLM`)
 
-`afya_sahihi.generation.model`, `...n_tokens`, `...avg_logprob`, `...temperature`, `...seed`.
+Two attribute families — the Afya-Sahihi-internal view (`afya_sahihi.generation.*`) that the orchestrator sets on its own `orchestrator.generate` span, and the OpenInference view (`llm.*`, `output.*`) that the vLLM client sets on the LLM span it emits. The two describe the same call from two angles; Phoenix reads the OpenInference view.
 
-Token-level logprobs go to Phoenix as span events — **not** as attributes on the span. Spans are for cardinality-bounded data; per-token logprobs would explode attribute size.
+**Orchestrator-side (lands in Tempo):** `afya_sahihi.generation.model`, `...n_tokens`, `...avg_logprob`, `...temperature`, `...seed`.
+
+**LLM-span-side (lands in Phoenix):** see `backend/app/observability/llm_spans.py` and the `OI` constant class there. Keys include `llm.model_name`, `llm.token_count.{prompt,completion,total}`, `output.value`, `output.mime_type`, plus one `token` event per generated token with `{token.index, token.text, token.logprob, token.top.i.text, token.top.i.logprob}`.
+
+Token-level logprobs are span **events**, not attributes — events carry timestamps and don't bloat cardinality. Token events are capped at `MAX_TOKEN_EVENTS = 256` per generation span; for long generations the first 256 tokens are what a clinician needs to calibrate against the model's confidence tail.
 
 ## Strict review
 
