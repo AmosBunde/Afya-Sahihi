@@ -67,6 +67,16 @@ def test_fit_temperature_on_overconfident_data_increases_t() -> None:
     assert model.temperature > 1.0
 
 
+def test_fit_temperature_on_underconfident_data_decreases_t() -> None:
+    # Model predicts 0.65 but actual accuracy is ~0.95 — model is
+    # under-confident. Temperature scaling should sharpen → T < 1.
+    rng = random.Random(17)
+    confs = [0.6 + rng.random() * 0.1 for _ in range(300)]  # ~0.65
+    correct = [rng.random() < 0.95 for _ in range(300)]  # ~0.95 acc
+    model = fit_temperature(confidences=confs, correct=correct)
+    assert model.temperature < 1.0
+
+
 def test_fit_temperature_reduces_ece() -> None:
     confs, correct = _overconfident_data(n=500, seed=11)
     model = fit_temperature(confidences=confs, correct=correct)
@@ -129,13 +139,41 @@ def test_fit_histogram_produces_n_bins_accuracies() -> None:
     assert len(model.accuracies) == 5
 
 
-def test_fit_histogram_interpolates_empty_bins() -> None:
+def test_fit_histogram_interpolates_between_occupied_bins() -> None:
+    # Training data in bin 0 (conf 0.05, acc 0) and bin 4 (conf 0.95,
+    # acc 1). Middle bins 1-3 should linearly interpolate between 0
+    # and 1: bin 1 → 0.25, bin 2 → 0.5, bin 3 → 0.75.
     confs = [0.05, 0.95]
     correct = [False, True]
     model = fit_histogram(confidences=confs, correct=correct, n_bins=5)
-    # Middle bins should be interpolated (not None-valued in tuple).
+    assert model.accuracies[0] == pytest.approx(0.0)
+    assert model.accuracies[1] == pytest.approx(0.25)
+    assert model.accuracies[2] == pytest.approx(0.5)
+    assert model.accuracies[3] == pytest.approx(0.75)
+    assert model.accuracies[4] == pytest.approx(1.0)
+
+
+def test_fit_histogram_edge_bins_fall_back_to_base_rate() -> None:
+    # Training data only in bin 4 (confidences 0.95-0.98). Empty edge
+    # bins 0-3 with no left neighbour fall back to the overall base
+    # rate, NOT to bin 4's accuracy — no-extrapolation policy.
+    confs = [0.95, 0.96, 0.97, 0.98]
+    correct = [True, True, False, False]  # base rate = 0.5
+    model = fit_histogram(confidences=confs, correct=correct, n_bins=5)
+    # Bin 4 has training data; empty bins 0-3 inherit base_rate 0.5
+    # (not bin 4's accuracy which would be 0.5 too — but the point is
+    # it's base rate, not extrapolated).
+    assert model.accuracies[0] == pytest.approx(0.5)
+    assert model.accuracies[1] == pytest.approx(0.5)
+    assert model.accuracies[2] == pytest.approx(0.5)
+    assert model.accuracies[3] == pytest.approx(0.5)
+
+
+def test_fit_histogram_all_empty_returns_base_rate() -> None:
+    model = fit_histogram(confidences=[], correct=[], n_bins=5)
+    # Empty training data → 0.5 across all bins.
     for v in model.accuracies:
-        assert isinstance(v, float)
+        assert v == pytest.approx(0.5)
 
 
 def test_histogram_model_apply_is_piecewise_constant() -> None:
