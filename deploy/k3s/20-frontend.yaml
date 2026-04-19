@@ -28,6 +28,60 @@ data:
   NGINX_CACHE_TTL: 30d
   NGINX_SECURITY_HEADERS: "true"
 ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frontend-nginx-conf
+  namespace: afya-sahihi
+  labels:
+    app.kubernetes.io/name: frontend
+    app.kubernetes.io/part-of: afya-sahihi
+data:
+  # nginx server block mounted at /etc/nginx/conf.d/default.conf. Serves
+  # the SPA with a /healthz endpoint for kubelet probes and SPA fallback
+  # so deep-linked client routes resolve to index.html.
+  default.conf: |
+    server {
+      listen 8080 default_server;
+      server_name _;
+
+      root /usr/share/nginx/html;
+      index index.html;
+
+      # Probe endpoint — bypasses access log to avoid filling logs with
+      # kubelet traffic.
+      location = /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+      }
+
+      # Hashed assets from Vite's build are immutable; long-cache them.
+      location ~* \.(?:js|css|woff2?|png|jpg|svg)$ {
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+        try_files $uri =404;
+      }
+
+      # SPA fallback — any unknown path serves index.html so client
+      # routing takes over.
+      location / {
+        try_files $uri $uri/ /index.html;
+      }
+
+      gzip on;
+      gzip_types application/javascript application/json text/css text/html application/manifest+json;
+      gzip_comp_level 6;
+      gzip_min_length 256;
+
+      # Security headers — CSP is scoped to our own origin + the OIDC
+      # authority; tighten further if frontend adds third-party assets.
+      add_header X-Content-Type-Options "nosniff" always;
+      add_header X-Frame-Options "DENY" always;
+      add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+      add_header Permissions-Policy "geolocation=(), camera=(), microphone=()" always;
+    }
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -100,6 +154,10 @@ spec:
             initialDelaySeconds: 2
             periodSeconds: 5
           volumeMounts:
+            - name: nginx-conf
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: default.conf
+              readOnly: true
             - name: cache
               mountPath: /var/cache/nginx
             - name: run
@@ -107,6 +165,9 @@ spec:
             - name: tmp
               mountPath: /tmp
       volumes:
+        - name: nginx-conf
+          configMap:
+            name: frontend-nginx-conf
         - name: cache
           emptyDir: { sizeLimit: 100Mi }
         - name: run
