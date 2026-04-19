@@ -32,5 +32,12 @@ resources:
   - ../../60-observability/70-exporters.yaml
   - ../../traefik-ingress.yaml
 
-commonLabels:
-  app.kubernetes.io/managed-by: afya-sahihi-watcher
+# Label every object with managed-by so the watcher's prune targets
+# only objects it owns. `includeSelectors: false` keeps the label off
+# Deployment selectors — adding a selector label to existing Deployments
+# would break the immutable-selector rule at apply time.
+labels:
+  - pairs:
+      app.kubernetes.io/managed-by: afya-sahihi-watcher
+    includeSelectors: false
+    includeTemplates: true

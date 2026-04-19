@@ -39,13 +39,16 @@ fi
 
 install -d -m 0700 /etc/afya-sahihi/secrets
 install -d -m 0755 /etc/afya-sahihi
+# kube-apiserver writes audit records here; it creates the file but
+# not the parent directory. Without this install -d, k3s crashes at
+# startup with an opaque "no such file or directory" error.
+install -d -m 0750 /var/log/k3s
 
 # --disable servicelb: Traefik fronts the cluster; we don't need klipper.
-# --disable local-storage: we provision PVCs via hostPath templates.
-# --node-taint + --node-label wire the control node for workloads that
-# tolerate the control role (observability stack lives here).
-# --write-kubeconfig-mode=0640 + explicit path so the afya-sahihi-deploy
-# group on the watcher host can read it.
+#   (We keep k3s's built-in local-path storageClass on — the
+#   observability stack's PVCs rely on it.)
+# --node-label wires the control node for workloads that tolerate the
+#   control role (observability stack lives here).
 curl -sfL https://get.k3s.io | \
   INSTALL_K3S_VERSION="$K3S_VERSION" \
   INSTALL_K3S_EXEC="server \
