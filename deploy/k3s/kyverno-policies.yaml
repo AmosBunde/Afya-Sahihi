@@ -1,0 +1,123 @@
+# Kyverno cluster policies enforcing the Afya Sahihi security baseline.
+#
+# Per issue #34 acceptance, every workload MUST:
+#   1. runAsNonRoot=true (runtime + manifest)
+#   2. no hostPath volumes
+#   3. CPU + memory requests AND limits set
+#
+# These are ClusterPolicies in `enforce` mode so a non-compliant
+# manifest is rejected at admission. Kyverno itself runs on the
+# cluster as a Deployment; install lands in this PR as well.
+#
+# Scope: afya-sahihi + observability namespaces. kube-system is
+# excluded because some system components legitimately mount hostPath
+# (node-exporter, promtail).
+
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: afya-sahihi-run-as-non-root
+  annotations:
+    policies.kyverno.io/category: Pod Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: |
+      Every pod must set runAsNonRoot=true either in the pod-level
+      securityContext or on every container.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: require-runAsNonRoot
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [afya-sahihi, observability]
+      validate:
+        message: |
+          Every pod in afya-sahihi and observability must set
+          runAsNonRoot=true at the pod or container level.
+        anyPattern:
+          - spec:
+              securityContext:
+                runAsNonRoot: true
+          - spec:
+              containers:
+                - securityContext:
+                    runAsNonRoot: true
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: afya-sahihi-no-host-path
+  annotations:
+    policies.kyverno.io/category: Pod Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: |
+      No hostPath volumes in afya-sahihi or observability namespaces.
+      node-exporter and promtail (kube-system / observability DaemonSets)
+      are explicitly exempted because they legitimately read
+      /var/log and /sys.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: forbid-hostpath
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [afya-sahihi, observability]
+      exclude:
+        any:
+          - resources:
+              selector:
+                matchLabels:
+                  app.kubernetes.io/name: node-exporter
+          - resources:
+              selector:
+                matchLabels:
+                  app.kubernetes.io/name: promtail
+      validate:
+        message: "hostPath volumes are not permitted (node-exporter / promtail exempted)."
+        pattern:
+          spec:
+            =(volumes):
+              - X(hostPath): "null"
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: afya-sahihi-resource-limits
+  annotations:
+    policies.kyverno.io/category: Best Practices
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: |
+      Every container must declare CPU + memory requests AND limits.
+      Sets a scheduling floor and prevents one runaway container
+      exhausting a node.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: require-requests-and-limits
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [afya-sahihi, observability]
+      validate:
+        message: |
+          Every container must declare resources.requests.cpu,
+          resources.requests.memory, resources.limits.cpu, and
+          resources.limits.memory.
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  requests:
+                    cpu: "?*"
+                    memory: "?*"
+                  limits:
+                    cpu: "?*"
+                    memory: "?*"

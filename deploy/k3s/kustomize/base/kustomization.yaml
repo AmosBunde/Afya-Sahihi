@@ -16,8 +16,15 @@ kind: Kustomization
 resources:
   - ../../00-namespace.yaml
   - ../../10-gateway.yaml
+  - ../../11-retrieval.yaml
+  - ../../12-conformal.yaml
+  - ../../13-audit.yaml
+  - ../../14-prefilter.yaml
+  - ../../16-eval-runner.yaml
+  - ../../17-al-scheduler.yaml
   - ../../20-redis.yaml
   - ../../30-labeling.yaml
+  - ../../kyverno-policies.yaml
   - ../../50-jobs/ingestion-cronjob.yaml
   - ../../50-jobs/tier2-eval-cronjob.yaml
   - ../../50-jobs/labeling-kappa-cronjob.yaml

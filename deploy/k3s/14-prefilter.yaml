@@ -1,0 +1,257 @@
+# Prefilter service — topic/safety classifier head fronting the
+# MedGemma-4B instance on the GPU node (ADR-0007, issue #16). Every
+# query goes through here before the 27B generation path; this is the
+# gate that refuses out-of-domain or unsafe queries.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prefilter-config
+  namespace: afya-sahihi
+  labels:
+    app.kubernetes.io/name: prefilter
+    app.kubernetes.io/part-of: afya-sahihi
+data:
+  SERVICE_NAME: afya-sahihi-prefilter
+  SERVICE_PORT: "8084"
+  SERVICE_WORKERS: "2"
+  SERVICE_LOG_LEVEL: info
+  SERVICE_LOG_FORMAT: json
+  OTEL_SERVICE_NAME: afya-sahihi-prefilter
+  OTEL_SERVICE_NAMESPACE: afya-sahihi
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector.observability.svc.cluster.local:4317
+  OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+  OTEL_TRACES_SAMPLER_RATIO: "1.0"
+  DEPLOYMENT_ENV: dev
+  # Prefilter tuning
+  PREFILTER_TOPIC_THRESHOLD: "0.65"
+  PREFILTER_SAFETY_STRICT: "true"
+  VLLM_4B_BASE_URL: http://afya-sahihi-gpu-01.internal:8001/v1
+  VLLM_4B_MODEL_NAME: medgemma-4b-it
+  VLLM_4B_TIMEOUT_SECONDS: "10"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prefilter
+  namespace: afya-sahihi
+  labels:
+    app.kubernetes.io/name: prefilter
+    app.kubernetes.io/part-of: afya-sahihi
+    app.kubernetes.io/component: prefilter
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: prefilter
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: prefilter
+        app.kubernetes.io/part-of: afya-sahihi
+        app.kubernetes.io/component: prefilter
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: prefilter
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: prefilter
+      containers:
+        - name: prefilter
+          image: harbor.aku.edu/afya-sahihi/prefilter:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8084
+            - name: metrics
+              containerPort: 9090
+          envFrom:
+            - configMapRef:
+                name: prefilter-config
+            - secretRef:
+                name: prefilter-secrets
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 24
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 10"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 256Mi }
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prefilter
+  namespace: afya-sahihi
+  labels:
+    app.kubernetes.io/name: prefilter
+    app.kubernetes.io/part-of: afya-sahihi
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: prefilter
+  ports:
+    - name: http
+      port: 8084
+      targetPort: http
+    - name: metrics
+      port: 9090
+      targetPort: metrics
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prefilter
+  namespace: afya-sahihi
+automountServiceAccountToken: false
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: prefilter
+  namespace: afya-sahihi
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: prefilter
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: prefilter
+  namespace: afya-sahihi
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: prefilter
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 70 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: prefilter
+  namespace: afya-sahihi
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: prefilter
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: gateway
+      ports:
+        - port: 8084
+          protocol: TCP
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+      ports:
+        - port: 9090
+          protocol: TCP
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # vLLM-4B on the GPU node.
+    - to:
+        - ipBlock: { cidr: 10.0.0.20/32 }
+      ports:
+        - port: 8001
+          protocol: TCP
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otel-collector
+      ports:
+        - port: 4317
+          protocol: TCP
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: prefilter
+  namespace: afya-sahihi
+  labels:
+    app.kubernetes.io/name: prefilter
+    app.kubernetes.io/part-of: afya-sahihi
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: prefilter
+  endpoints:
+    - port: metrics
+      interval: 15s
+      path: /metrics

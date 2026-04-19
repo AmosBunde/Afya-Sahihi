@@ -1,0 +1,260 @@
+# Conformal prediction service — split conformal q_hat lookup +
+# prediction-set construction + drift monitor. Internal-only.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: conformal-config
+  namespace: afya-sahihi
+  labels:
+    app.kubernetes.io/name: conformal
+    app.kubernetes.io/part-of: afya-sahihi
+data:
+  SERVICE_NAME: afya-sahihi-conformal
+  SERVICE_PORT: "8082"
+  SERVICE_WORKERS: "2"
+  SERVICE_LOG_LEVEL: info
+  SERVICE_LOG_FORMAT: json
+  CORPUS_VERSION: v1.0
+  OTEL_SERVICE_NAME: afya-sahihi-conformal
+  OTEL_SERVICE_NAMESPACE: afya-sahihi
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector.observability.svc.cluster.local:4317
+  OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+  OTEL_TRACES_SAMPLER_RATIO: "1.0"
+  DEPLOYMENT_ENV: dev
+  # Conformal tuning (ADR-0006, issue #25)
+  CONFORMAL_ALPHA: "0.10"
+  CONFORMAL_MIN_CAL_SAMPLES: "200"
+  CONFORMAL_COVERAGE_TARGET: "0.90"
+  CONFORMAL_COVERAGE_DEVIATION_MAX: "0.03"
+  DRIFT_WINDOW_SECONDS: "3600"
+  DRIFT_MMD_ALERT_THRESHOLD: "0.15"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: conformal
+  namespace: afya-sahihi
+  labels:
+    app.kubernetes.io/name: conformal
+    app.kubernetes.io/part-of: afya-sahihi
+    app.kubernetes.io/component: conformal
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: conformal
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: conformal
+        app.kubernetes.io/part-of: afya-sahihi
+        app.kubernetes.io/component: conformal
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: conformal
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: conformal
+      containers:
+        - name: conformal
+          image: harbor.aku.edu/afya-sahihi/conformal:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8082
+            - name: metrics
+              containerPort: 9090
+          envFrom:
+            - configMapRef:
+                name: conformal-config
+            - secretRef:
+                name: conformal-secrets
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "2"
+              memory: "2Gi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 24
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 10"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 256Mi }
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: conformal
+  namespace: afya-sahihi
+  labels:
+    app.kubernetes.io/name: conformal
+    app.kubernetes.io/part-of: afya-sahihi
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: conformal
+  ports:
+    - name: http
+      port: 8082
+      targetPort: http
+    - name: metrics
+      port: 9090
+      targetPort: metrics
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: conformal
+  namespace: afya-sahihi
+automountServiceAccountToken: false
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: conformal
+  namespace: afya-sahihi
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: conformal
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: conformal
+  namespace: afya-sahihi
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: conformal
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 70 }
+    - type: Resource
+      resource:
+        name: memory
+        target: { type: Utilization, averageUtilization: 80 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: conformal
+  namespace: afya-sahihi
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: conformal
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: gateway
+      ports:
+        - port: 8082
+          protocol: TCP
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+      ports:
+        - port: 9090
+          protocol: TCP
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    - to:
+        - ipBlock: { cidr: 10.0.0.10/32 }
+      ports:
+        - port: 5432
+          protocol: TCP
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otel-collector
+      ports:
+        - port: 4317
+          protocol: TCP
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: conformal
+  namespace: afya-sahihi
+  labels:
+    app.kubernetes.io/name: conformal
+    app.kubernetes.io/part-of: afya-sahihi
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: conformal
+  endpoints:
+    - port: metrics
+      interval: 15s
+      path: /metrics
