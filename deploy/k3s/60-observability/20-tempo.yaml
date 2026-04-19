@@ -1,0 +1,204 @@
+# Grafana Tempo for trace storage.
+#
+# Single-binary deployment (not the distributor/ingester/querier split)
+# because our volume is tiny (2000 queries/day → ~40k spans/day). S3
+# storage targets MinIO on the data plane node; retention is 30 days
+# (TEMPO_RETENTION_DAYS in env/observability.env).
+#
+# The S3 credentials are expected to be provisioned as a SealedSecret
+# named `afya-sahihi-tempo-s3`. If it's missing Tempo will crash-loop —
+# intentional. Without S3 access Tempo silently loses traces, which is
+# worse than a noisy failure.
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tempo
+  namespace: observability
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tempo-config
+  namespace: observability
+data:
+  tempo.yaml: |
+    server:
+      http_listen_port: 3200
+      grpc_listen_port: 9095
+      log_level: info
+
+    distributor:
+      receivers:
+        otlp:
+          protocols:
+            grpc:
+              endpoint: 0.0.0.0:4317
+
+    ingester:
+      max_block_duration: 5m
+      max_block_bytes: 100_000_000
+
+    compactor:
+      compaction:
+        block_retention: 720h  # 30 days; matches TEMPO_RETENTION_DAYS
+        compacted_block_retention: 1h
+
+    metrics_generator:
+      registry:
+        external_labels:
+          source: tempo
+          cluster: afya-sahihi
+      processor:
+        service_graphs:
+          dimensions: [service.namespace, deployment.environment]
+        span_metrics:
+          dimensions: [service.namespace, deployment.environment]
+      storage:
+        path: /var/tempo/generator/wal
+        remote_write:
+          - url: http://prometheus.observability.svc.cluster.local:9090/api/v1/write
+            send_exemplars: true
+
+    storage:
+      trace:
+        backend: s3
+        s3:
+          bucket: afya-sahihi-traces
+          endpoint: minio.afya-sahihi.svc.cluster.local:9000
+          insecure: true
+          access_key: ${env:MINIO_ACCESS_KEY}
+          secret_key: ${env:MINIO_SECRET_KEY}
+        wal:
+          path: /var/tempo/wal
+        local:
+          path: /var/tempo/blocks
+
+    overrides:
+      defaults:
+        metrics_generator:
+          processors: [service-graphs, span-metrics]
+        global:
+          max_bytes_per_trace: 5_000_000
+
+    querier:
+      max_concurrent_queries: 10
+      search:
+        query_timeout: 30s
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: tempo
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: tempo
+    app.kubernetes.io/part-of: afya-sahihi
+spec:
+  serviceName: tempo
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tempo
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tempo
+    spec:
+      serviceAccountName: tempo
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: tempo
+          image: grafana/tempo:2.5.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - -config.file=/etc/tempo/tempo.yaml
+            - -config.expand-env=true
+          env:
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: afya-sahihi-tempo-s3
+                  key: access_key
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: afya-sahihi-tempo-s3
+                  key: secret_key
+          ports:
+            - name: http
+              containerPort: 3200
+            - name: grpc
+              containerPort: 9095
+            - name: otlp-grpc
+              containerPort: 4317
+          resources:
+            requests:
+              cpu: "200m"
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 3200
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: 3200
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/tempo
+            - name: data
+              mountPath: /var/tempo
+      volumes:
+        - name: config
+          configMap:
+            name: tempo-config
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 20Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tempo
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: tempo
+    app.kubernetes.io/part-of: afya-sahihi
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: tempo
+  ports:
+    - name: http
+      port: 3200
+      targetPort: http
+    - name: grpc
+      port: 9095
+      targetPort: grpc
+    - name: otlp-grpc
+      port: 4317
+      targetPort: otlp-grpc

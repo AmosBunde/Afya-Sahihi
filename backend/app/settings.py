@@ -68,3 +68,10 @@ class Settings(BaseSettings):
 
     # CORS
     cors_allowed_origins: str = "https://afya-sahihi.aku.edu"
+
+    # Observability
+    otel_exporter_otlp_endpoint: str = ""
+    otel_exporter_otlp_insecure: bool = True
+    otel_traces_sampler_ratio: float = 1.0
+    deployment_env: str = "dev"
+    git_sha: str = "unknown"
