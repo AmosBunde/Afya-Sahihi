@@ -52,7 +52,7 @@ ingestion = [
 # Training pulls in Unsloth + TRL for LoRA fine-tuning. GPU required.
 # Install on the operator workstation or training node only. ADR-0007.
 training = [
-    "unsloth==2024.12.4",
+    "unsloth==2026.4.6",
     "trl==0.12.2",
     "datasets==3.1.0",
     "torch==2.4.1",
