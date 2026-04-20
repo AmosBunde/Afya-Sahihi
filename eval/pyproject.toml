@@ -9,7 +9,7 @@ license = { text = "Apache-2.0" }
 # can be imported/tested without it.
 dependencies = [
     "inspect-ai>=0.3.0,<0.4.0",
-    "pydantic==2.9.2",
+    "pydantic==2.13.2",
 ]
 
 [project.optional-dependencies]
