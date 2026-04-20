@@ -11,7 +11,7 @@ authors = [{ name = "Aga Khan University" }]
 # Redis + asyncpg clients are extras so CI can unit-test the math
 # without installing the full UI stack. ADR-0009.
 dependencies = [
-    "pydantic==2.9.2",
+    "pydantic==2.13.2",
     "pydantic-settings==2.6.1",
 ]
 
