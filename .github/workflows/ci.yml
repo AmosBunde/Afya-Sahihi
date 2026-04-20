@@ -33,7 +33,7 @@ jobs:
       has_backend_dockerfile: ${{ steps.detect.outputs.has_backend_dockerfile }}
       has_frontend_dockerfile: ${{ steps.detect.outputs.has_frontend_dockerfile }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - id: detect
         run: |
           emit() { echo "$1=$2" >> "$GITHUB_OUTPUT"; }
@@ -47,10 +47,10 @@ jobs:
     name: Hygiene & hooks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -66,7 +66,7 @@ jobs:
     name: Gitleaks secret scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - uses: gitleaks/gitleaks-action@v2
@@ -79,8 +79,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: preflight
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Semgrep
@@ -103,7 +103,7 @@ jobs:
           bandit -c backend/pyproject.toml -r backend/ -f sarif -o bandit.sarif || true
       - name: Upload Bandit SARIF
         if: hashFiles('bandit.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: bandit.sarif
           category: bandit
@@ -125,19 +125,19 @@ jobs:
           echo "langs=$langs" >> "$GITHUB_OUTPUT"
       - name: CodeQL init
         if: steps.codeql_langs.outputs.langs != ''
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
           languages: ${{ steps.codeql_langs.outputs.langs }}
       - name: CodeQL analyze
         if: steps.codeql_langs.outputs.langs != ''
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
 
   deps:
     name: Dependency audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: pip-audit
@@ -204,11 +204,11 @@ jobs:
       # Integration tests reuse the same DSN via the testcontainers fallback.
       AFYA_SAHIHI_TEST_DATABASE_URL: postgresql+psycopg://postgres:test@localhost:5432/afya_sahihi_test
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@v7
       - name: Install deps
         run: |
           cd backend
@@ -228,7 +228,7 @@ jobs:
         run: |
           cd backend
           uv run pytest tests/integration -v -m integration
-      - uses: codecov/codecov-action@v4
+      - uses: codecov/codecov-action@v6
         if: hashFiles('backend/coverage.xml') != ''
         with:
           files: backend/coverage.xml
@@ -247,11 +247,11 @@ jobs:
       needs.preflight.outputs.has_eval == 'true'
       && needs.preflight.outputs.has_backend_dockerfile == 'true'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@v7
       - name: Run Tier 1 evals
         env:
           INSPECT_MODEL_URL: ${{ secrets.INSPECT_MODEL_URL }}
@@ -260,7 +260,7 @@ jobs:
           cd eval
           uv sync
           uv run inspect eval tier1/golden_set.py --model afya-sahihi --log-level warning
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: tier1-logs
@@ -273,8 +273,8 @@ jobs:
     needs: preflight
     if: needs.preflight.outputs.has_frontend == 'true'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: "20"
           cache: npm
@@ -297,10 +297,10 @@ jobs:
       matrix:
         service: [gateway, retrieval, conformal, audit, frontend]
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v4
       - name: Build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ${{ matrix.service == 'frontend' && 'frontend/Dockerfile' || 'backend/Dockerfile' }}
@@ -317,7 +317,7 @@ jobs:
           output: trivy-${{ matrix.service }}.sarif
           severity: CRITICAL,HIGH
           exit-code: "1"
-      - uses: github/codeql-action/upload-sarif@v3
+      - uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: trivy-${{ matrix.service }}.sarif
@@ -327,7 +327,7 @@ jobs:
     name: Validate k3s manifests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: kubeconform
         # Pin the kubeconform version. The default templating engine does
         # not expose a `lower` filter across all released versions; rather
