@@ -46,7 +46,7 @@ dev = [
 # by the gateway, retrieval, or conformal services. ADR-0004.
 ingestion = [
     "docling==2.9.0",
-    "sentence-transformers==3.2.1",
+    "sentence-transformers==5.4.1",
     "torch==2.4.1",
 ]
 # Training pulls in Unsloth + TRL for LoRA fine-tuning. GPU required.
@@ -60,7 +60,7 @@ training = [
 # Retrieval reranker (bge-reranker-v2-m3 via CrossEncoder). CPU inference;
 # installed in the retrieval container only. ADR-0002.
 reranker = [
-    "sentence-transformers==3.2.1",
+    "sentence-transformers==5.4.1",
     "torch==2.4.1",
 ]
 
